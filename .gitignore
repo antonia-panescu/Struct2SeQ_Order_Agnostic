@@ -1,0 +1,51 @@
+# Checkpoints (each ~120 MB; too large for git)
+*.pt
+# Optimizer / scheduler state, mid-epoch resume files
+*.opt
+*.sched
+*.pkl
+
+# Training data and play-phase outputs
+tmp/
+top2M.csv
+
+# Logs / metrics
+logs/
+stats/
+wandb/
+run_*.log
+run_*.txt
+slurm-*.out
+rewards_log.csv
+
+# Eval run outputs (per-run dirs are large; the script + lab_notebook
+# already capture what we need, and the JSON summaries can be re-derived
+# from per_sample.csv anyway).
+evaluation/2026*__*/
+evaluation/MERGED__*/
+evaluation/_*.log
+evaluation/_done_so_far.csv
+evaluation/_launch_*.log
+
+# Python build / cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Claude per-project state (settings only — keep settings.json out of repo
+# unless it's meant to be shared)
+.claude/
+
+# Arnie config (path is per-machine)
+arnie_file.txt
+
+# OS junk
+.DS_Store
+Thumbs.db
