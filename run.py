@@ -551,7 +551,7 @@ def parse_args():
     parser.add_argument(
         "--wandb-project",
         type=str,
-        default="knitnet-struct2seq",
+        default="struct2seq_bidir",
         help="WandB project name",
     )
     parser.add_argument(
