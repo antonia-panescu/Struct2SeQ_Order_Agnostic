@@ -959,7 +959,13 @@ def main():
         print(f"Training loss: {loss:.4f}")
         if use_wandb and accelerator.is_main_process:
             wandb.log({"train/loss": loss, "episode": episode + 1})
-        target_network.load_state_dict(policy_network.state_dict())
+        # Unwrap both nets before syncing — torch.compile + DDP can give them
+        # mismatched key prefixes (`_orig_mod.module.*` vs `_orig_mod.*`),
+        # which makes a direct load_state_dict between the wrapped versions
+        # crash. unwrap_model strips both compile and DDP wrappers.
+        accelerator.unwrap_model(target_network).load_state_dict(
+            accelerator.unwrap_model(policy_network).state_dict()
+        )
         accelerator.wait_for_everyone()
 
         # Save checkpoint before test play so weights aren't lost if test play OOMs
