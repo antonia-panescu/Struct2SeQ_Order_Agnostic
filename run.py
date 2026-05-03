@@ -724,6 +724,18 @@ def main():
         print(f"Loading pretrained checkpoint: {args.checkpoint}")
         state = torch.load(args.checkpoint, map_location="cpu")
 
+        # Strip torch.compile's _orig_mod. prefix and DDP's module. prefix
+        # if either is present (a previous checkpoint may have been saved
+        # while wrapped). accelerator.unwrap_model strips DDP but does NOT
+        # strip torch.compile's OptimizedModule wrapper, so manual cleanup
+        # here is needed.
+        def _clean_key(k):
+            for prefix in ("_orig_mod.", "module."):
+                if k.startswith(prefix):
+                    k = k[len(prefix):]
+            return k
+        state = {_clean_key(k): v for k, v in state.items()}
+
         # The decoder PE was redesigned (LSTM + CausalConv → relative-position
         # attention bias). Old checkpoints (Struct2SeQ.pt and any
         # policy_network_*.pt from before the redesign) carry weights for the
