@@ -1021,7 +1021,12 @@ def main():
         # Log rewards
         if accelerator.is_main_process:
             log_rewards("rewards_log.csv", episode + 1, train_rewards, test_rewards)
-            lr_final = optimizer.param_groups[0]["lr"]
+            # Optimizer may not have been created if --skip-train was used for
+            # this episode. Fall back to NaN in that case.
+            try:
+                lr_final = optimizer.param_groups[0]["lr"]
+            except (NameError, UnboundLocalError):
+                lr_final = float("nan")
             train_loss_mean = (
                 float(np.mean(epoch_losses)) if epoch_losses else float("nan")
             )
