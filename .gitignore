@@ -49,3 +49,4 @@ arnie_file.txt
 # OS junk
 .DS_Store
 Thumbs.db
+results/

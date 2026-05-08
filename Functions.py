@@ -361,6 +361,7 @@ def generate_permuted(
     mode: str = "epsilon_argmax",          # "epsilon_argmax" or "sample"
     p: float = 0.0,                        # epsilon for "epsilon_argmax"; ignored for "sample"
     start_token: int = 4,
+    fixed=None,                            # optional [B, L] long, -1 free, 0..3 constrained
 ):
     """Permutation-aware autoregressive decode with KV-cache.
 
@@ -395,6 +396,12 @@ def generate_permuted(
     paired_step = paired_at_pos.gather(1, perm)        # [B, L]; matches training
 
     rna_outputs = torch.full((B, L), -1, dtype=torch.long, device=device)
+    if fixed is not None:
+        # In-painting: prefill constrained positions so partner-mask logic
+        # (below) sees the fixed nucleotides when checking pairing
+        # constraints — required because the partner of a current step may
+        # already be a fixed position.
+        rna_outputs = torch.where(fixed >= 0, fixed, rna_outputs)
     A_cnt = np.zeros(B, dtype=np.float64)
 
     # Step-order tgt input. At step t, we feed:
@@ -465,21 +472,54 @@ def generate_permuted(
 
         masked_values = values.masked_fill(mask, float("-inf"))
 
+        # Defensive: if every base is masked for some row (can happen on
+        # tight pseudoknots when partner-mask already blocks 3 and the
+        # recent-repeat constraint blocks the 4th — the escape hatches
+        # above don't catch this composition), fall back to the unmasked
+        # values for that row so softmax/argmax don't see all-(-inf).
+        all_masked_rows = torch.isinf(masked_values).all(dim=-1)
+        if all_masked_rows.any():
+            masked_values = torch.where(
+                all_masked_rows.unsqueeze(-1), values, masked_values,
+            )
+
         # ---- sampling ------------------------------------------------------
         if mode == "epsilon_argmax":
-            # bf16-safe deterministic-argmax-via-softmax: cast to fp32 first
+            # bf16-safe deterministic-argmax-via-softmax: cast to fp32 first.
+            # Sanitize NaN/inf from bf16 model outputs so argmax & multinomial
+            # don't crash on tight pseudoknots / overflow.
             mv32 = masked_values.float()
-            probs = F.softmax(mv32 / 1e7, dim=-1)
-            sampled = torch.multinomial(probs, 1)
+            mv32 = torch.nan_to_num(mv32, nan=-1e30, posinf=1e30, neginf=-1e30)
             argmax = torch.argmax(mv32, dim=-1, keepdim=True)
-            random_sample = torch.rand(B, device=device) < p
-            next_tokens = torch.where(random_sample.unsqueeze(1), sampled, argmax)
+            if p > 0.0:
+                probs = F.softmax(mv32 / 1e7, dim=-1)
+                probs = torch.nan_to_num(probs, nan=0.25, posinf=0.0, neginf=0.0)
+                probs = probs.clamp(min=1e-8)
+                probs = probs / probs.sum(dim=-1, keepdim=True)
+                sampled = torch.multinomial(probs, 1)
+                random_sample = torch.rand(B, device=device) < p
+                next_tokens = torch.where(random_sample.unsqueeze(1), sampled, argmax)
+            else:
+                next_tokens = argmax
         elif mode == "sample":
-            probs = F.softmax(masked_values.float(), dim=-1)
+            mv32 = masked_values.float()
+            mv32 = torch.nan_to_num(mv32, nan=-1e30, posinf=1e30, neginf=-1e30)
+            probs = F.softmax(mv32, dim=-1)
+            probs = torch.nan_to_num(probs, nan=0.25, posinf=0.0, neginf=0.0)
+            probs = probs.clamp(min=1e-8)
+            probs = probs / probs.sum(dim=-1, keepdim=True)
             next_tokens = torch.multinomial(probs, 1)
         else:
             raise ValueError(f"Unknown mode: {mode}")
 
+        if fixed is not None:
+            # If this step lands on a fixed (in-painted) position, override
+            # the sampled token with the constrained nucleotide. KV cache
+            # stays consistent because we feed `prev_tok = next_tokens`
+            # next iteration regardless.
+            fixed_at_step = fixed.gather(1, cur_rna_pos.unsqueeze(1))
+            is_fixed = fixed_at_step >= 0
+            next_tokens = torch.where(is_fixed, fixed_at_step, next_tokens)
         rna_outputs.scatter_(1, cur_rna_pos.unsqueeze(1), next_tokens)
         A_cnt = A_cnt + (next_tokens.squeeze(-1) == 0).cpu().float().numpy()
         prev_tok = next_tokens                          # feed at next step
