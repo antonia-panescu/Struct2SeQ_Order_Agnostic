@@ -76,6 +76,12 @@ for entry in "0.00 00" "0.25 25" "0.50 50" "0.75 75" "0.95 95"; do
     run_config "${tag}" --model bidir --inference-mode inpaint --inpaint-k "${K}"
 done
 
+# 9. principled structural-motif in-painting (each sample picks one motif
+# at random from the puzzle's hairpin / internal_loop / multi_loop /
+# pseudoknot_stem inventory; positions in that motif fixed to WT).
+run_config "bidir_motifs_structural" \
+    --model bidir --inference-mode inpaint --motif-mode structural
+
 echo ""
 echo "All configurations complete."
 echo "Per-config summaries: ${OUT_ROOT}/<config>/summary.csv"

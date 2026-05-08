@@ -101,7 +101,20 @@ def parse_args() -> argparse.Namespace:
         required=True,
     )
     p.add_argument("--inpaint-k", type=float, default=0.0,
-                   help="Fraction of WT positions to fix (only for inpaint).")
+                   help="Fraction of WT positions to fix (only for scatter inpaint).")
+    p.add_argument(
+        "--motif-mode", choices=["scatter", "structural"], default="scatter",
+        help=("scatter = uniform-random K-of-WT (legacy); "
+              "structural = pick one principled motif from the puzzle's "
+              "motif inventory per sample (hairpin / internal_loop / "
+              "multi_loop / pseudoknot_stem). Only used when --inference-mode "
+              "is inpaint."),
+    )
+    p.add_argument(
+        "--max-motif-fraction", type=float, default=0.5,
+        help=("Skip motifs covering more than this fraction of the puzzle. "
+              "Avoids degenerate 'fix 89%% of structure' cases."),
+    )
     p.add_argument(
         "--targets-csv", type=str,
         default="/home/nvidia/haiwen/antonia/OpenKnotAIDesignData/Targets/Round3_targets.csv",
@@ -253,7 +266,8 @@ def make_fixed(
     B: int, L: int, wt_indices: torch.Tensor, k_inpaint: float, rng: np.random.Generator,
     device,
 ) -> Optional[torch.Tensor]:
-    """Build [B, L] tensor with -1 for free positions, WT nucleotide for fixed."""
+    """Build [B, L] tensor with -1 for free positions, WT nucleotide for fixed
+    (random scatter mode)."""
     if k_inpaint <= 0.0:
         return None
     n_fixed = int(np.floor(k_inpaint * L))
@@ -265,6 +279,35 @@ def make_fixed(
         for i in idx:
             fixed[b, i] = int(wt_indices[b, i].item())
     return fixed
+
+
+def make_fixed_motif(
+    B: int, L: int, wt_indices: torch.Tensor,
+    puzzle_idxs_in_batch: List[int], lengths_in_batch: List[int],
+    motif_inventories: dict, rng: np.random.Generator, device,
+):
+    """Pick one motif at random from each row's puzzle inventory and build
+    a [B, L] fixed tensor. Returns (fixed_tensor, list_of_(kind, size)).
+
+    motif_inventories: dict[puzzle_idx] -> list of motifs
+                        each motif: {"kind", "positions", "size"}
+    """
+    fixed = torch.full((B, L), -1, dtype=torch.long, device=device)
+    motif_meta = []
+    for b in range(B):
+        pi = puzzle_idxs_in_batch[b]
+        Lb = lengths_in_batch[b]
+        motifs = motif_inventories.get(pi, [])
+        if not motifs:
+            motif_meta.append(("none", 0))
+            continue
+        # pick uniformly at random
+        m = motifs[int(rng.integers(0, len(motifs)))]
+        for pos in m["positions"]:
+            if 0 <= pos < Lb:
+                fixed[b, pos] = int(wt_indices[b, pos].item())
+        motif_meta.append((m["kind"], m["size"]))
+    return fixed, motif_meta
 
 
 # --------------------------------------------------------------------------- scoring
@@ -324,6 +367,7 @@ def main():
         "puzzle_idx", "puzzle_id", "title", "sample_idx",
         "generated_sequence", "predicted_structure",
         "jaccard_vs_target", "eterna_score", "cpq_score", "ok_score",
+        "motif_kind", "motif_size_nt",
     ]
     new_csv = not samples_csv.exists()
     csv_f = open(samples_csv, "a", newline="")
@@ -343,6 +387,29 @@ def main():
          convert_dotbracket_to_bp_list(pz.target_db, allow_pseudoknots=True)}
         for pz in puzzles
     ]
+
+    # Build motif inventory for structural in-painting mode.
+    motif_inventories: dict = {}
+    if args.motif_mode == "structural":
+        from evaluation.motif_extraction import extract_motifs
+        for pz in puzzles:
+            ms = extract_motifs(pz.target_db)
+            ms_kept = [
+                {
+                    "kind": m.kind,
+                    "positions": sorted(m.positions),
+                    "size": m.size,
+                }
+                for m in ms
+                if m.size <= args.max_motif_fraction * pz.length
+            ]
+            motif_inventories[pz.idx] = ms_kept
+            if accelerator.is_main_process:
+                print(
+                    f"  puzzle {pz.idx} {pz.title[:30]:<30} L={pz.length}: "
+                    f"{len(ms_kept)}/{len(ms)} motifs kept "
+                    f"(<= {args.max_motif_fraction:.0%} of L)"
+                )
 
     # Dataset/loader
     dataset = PuzzleReplicaDataset(puzzles, args.k_samples)
@@ -420,6 +487,7 @@ def main():
 
         # Generate sequences (fp32 — bf16 autocast can produce NaN values that
         # collapse the model to all-A on tight pseudoknot puzzles).
+        motif_meta = [("none", 0)] * B
         with torch.no_grad():
             if args.inference_mode == "l2r_legacy":
                 seqs = generate_sequence_batched(
@@ -428,7 +496,14 @@ def main():
             else:
                 if args.inference_mode == "inpaint":
                     perm = make_perm(B, L, "inpaint", src, device, rng)
-                    fixed = make_fixed(B, L, wt_indices, args.inpaint_k, rng, device)
+                    if args.motif_mode == "structural":
+                        fixed, motif_meta = make_fixed_motif(
+                            B, L, wt_indices,
+                            puzzle_idxs, [int(x.item()) for x in lengths],
+                            motif_inventories, rng, device,
+                        )
+                    else:
+                        fixed = make_fixed(B, L, wt_indices, args.inpaint_k, rng, device)
                 else:
                     perm = make_perm(B, L, args.inference_mode, src, device, rng)
                     fixed = None
@@ -457,10 +532,12 @@ def main():
             eterna, cpq_q, ok = compute_ok_score(pred_db, shape_b, L_b)
 
             pz = puzzles[puzzle_idxs[b]]
+            mk, msz = motif_meta[b]
             csv_w.writerow([
                 puzzle_idxs[b], pz.puzzle_id, pz.title, sample_idxs[b],
                 seq_str, pred_db,
                 f"{jacc:.6f}", f"{eterna:.4f}", f"{cpq_q:.4f}", f"{ok:.4f}",
+                mk, msz,
             ])
         csv_f.flush()
         os.fsync(csv_f.fileno())
@@ -495,10 +572,12 @@ def merge_and_summarize(out_dir: Path, num_ranks: int, puzzles: List[Puzzle], ar
     all_df.to_csv(out_dir / "samples.csv", index=False)
 
     rows = []
-    cfg_tag = (
-        f"{args.model}_{args.inference_mode}"
-        + (f"_K{args.inpaint_k:.2f}" if args.inference_mode == "inpaint" else "")
-    )
+    if args.inference_mode == "inpaint" and args.motif_mode == "structural":
+        cfg_tag = f"{args.model}_motifs_structural"
+    elif args.inference_mode == "inpaint":
+        cfg_tag = f"{args.model}_inpaint_K{args.inpaint_k:.2f}"
+    else:
+        cfg_tag = f"{args.model}_{args.inference_mode}"
     for pz in puzzles:
         sub = all_df[all_df["puzzle_idx"] == pz.idx]
         if len(sub) == 0:
