@@ -23,13 +23,25 @@ Tags:
 - `[NUMBER]` Within our model, **random-perm decoding beats L→R-from-the-same-checkpoint
   by 38.6%** at producing perfect designs (45.5% vs 32.8%) — proving the
   capability lives in the *training distribution*, not just architecture.
-- `[NUMBER]` **Principled structural-motif in-painting achieves 37.9% perfect
-  designs** on the OK7 puzzles (vs random scatter at matched mean
-  fraction-fixed: 27.7%). Structurally-coherent constraints are *easier*
-  for the model than scattered ones.
+- `[NUMBER]` **Principled structural-motif in-painting (motif-preservation
+  mode) achieves 37.9% perfect designs** on the OK7 puzzles (vs random
+  scatter at matched mean fraction-fixed: 27.7%). Structurally-coherent
+  constraints are *easier* for the model than scattered ones.
+  **Framing**: this is the RFdiffusion / ProteinMPNN analog —
+  *fix the motif (hairpin / pseudoknot-stem), design the surrounding
+  scaffold*. The motif is the anchor; the scaffold is the design target.
 - `[NUMBER]` Sweet spot of motif size: **56.8% perfect at 16-25 nt motifs**.
   Extreme sizes are harder both ways (too small = unconstrained noise;
   too large = under-determined design problem).
+- `[NUMBER]` **AR + teacher-forced motif inpainting (the strongest hack)
+  reaches 33.4% perfect — still 4.5pp below our 37.9%.** Teacher-forcing
+  alone improves AR from 21.2% (no motif) → 33.4%, so it helps a lot.
+  But it doesn't close the gap. Order-agnostic decoding wins natively.
+- `[NUMBER]` **Best-of-N saturation:** at K=1000, ours solves
+  **95% of OK7 puzzles** (≥1 perfect-Jaccard design); AR L→R only solves
+  **75%**. AR + teacher-forced motif catches up to 95% but only at the
+  full K=1000 — at K=500 it's at 89.7% vs our 92.2%. So even the
+  saturation regime favors order-agnostic.
 
 ---
 
@@ -156,9 +168,16 @@ Tags:
 
 - `[REVIEWER]` *"Wouldn't AR with teacher-forced inpainting close the
   gap?"*
-  Response: [PENDING — to be addressed once we run the AR-inpainting
-  experiment]. Hypothesis: no, because the L→R decoder commits to
-  upstream positions before seeing downstream constraints.
+  Response: **No (RESOLVED).** We ran orig Struct2SeQ.pt under L→R
+  AR with teacher-forced WT at the motif positions, K=1000, same 20
+  OK7 puzzles. Result: 33.4% perfect Jaccard. Compare to ours
+  (bidir + structural motif): 37.9% perfect. Teacher-forcing helps
+  AR a lot (21.2% → 33.4% on its own scaffold), but it does NOT
+  close the gap to order-agnostic — we still win by **+4.5pp
+  absolute / +13.5% relative**. Mechanism: even with the motif
+  positions teacher-forced, the L→R decoder still commits to upstream
+  scaffold positions before the motif is reached and hence cannot
+  optimize them around the constraint.
 
 ---
 
@@ -200,6 +219,33 @@ Tags:
 - Mutation distance from WT (mirror Shujun Fig 6).
 - Model confidence at WT positions (does the model "agree" with the
   motif constraint without being forced?).
+- **Motif-redesign (Framing B) proof-of-concept.** Same selected motifs
+  as Framing A, but invert the mask: fix everything *except* the motif
+  to WT, regenerate just the hairpin / pseudoknot-stem itself. Pairs
+  with the motif-preservation results to demonstrate "fix arbitrary
+  subset, design complement" capability — both directions are
+  AR-impossible.
+
+---
+
+## Future work (for paper §4)
+
+- `[TEXT]` **Targeted application to aptamer / ligand-binding sites.**
+  The motif-redesign capability (Framing B) could be applied specifically
+  to redesign sequence around known functional sites: preserve the
+  ligand-binding pocket / aptamer recognition motif, explore variants of
+  the surrounding structural context. This is the natural synth-bio
+  follow-up to the proof-of-concept here, paired with experimental
+  validation (Eterna OpenKnot rounds, in-vitro binding assays).
+- `[TEXT]` **Order-strategy ablation across all 20 puzzles** (paired-first
+  vs loop-outward vs hardest-first).
+- `[TEXT]` **Graded reward** (partner-distance or target-OK score)
+  combined with REINFORCE/GRPO for sample efficiency. cf.
+  `ideas/reward_design.md`.
+- `[TEXT]` **240mer OK7b benchmark** at higher per-target compute.
+- `[TEXT]` **Multi-seed runs** for statistical significance.
+- `[TEXT]` **SHAPE-supervised retraining variant** (analog to
+  Struct2SeQ-SHAPE).
 
 ---
 
