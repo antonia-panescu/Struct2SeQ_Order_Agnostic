@@ -42,6 +42,13 @@ Tags:
   **75%**. AR + teacher-forced motif catches up to 95% but only at the
   full K=1000 — at K=500 it's at 89.7% vs our 92.2%. So even the
   saturation regime favors order-agnostic.
+- `[NUMBER]` **Sample efficiency / moving away from best-of-N:**
+  Expected number of samples to find one perfect-Jaccard design is
+  **2.2 (ours)** vs **4.7 (orig AR L→R)** at the aggregate level —
+  a **2.1× sample-efficiency ratio**. Per-puzzle (geometric mean
+  across solvable puzzles): **4.3 (ours) vs 16.1 (orig AR)** — a
+  **3.7× ratio**. Ours solves 19/20 puzzles (where ≥1 perfect exists
+  in K=1000); orig AR only solves 15/20.
 
 ---
 
@@ -99,6 +106,24 @@ Tags:
   the sampled token, but the surrounding context is *generated* by the
   model based on the constraint. The fact that the surrounding
   generates coherent structure ~38% of the time is the result.
+
+- `[TEXT]` **Per-sample reliability → moving away from best-of-N as
+  a crutch.** The dominant paradigm in the field — including Shujun's
+  K=98 000-per-target screening protocol — is brute-force best-of-N
+  sampling: generate orders of magnitude more candidates than you need,
+  then filter by Jaccard / OK score / experimental SHAPE. This is
+  effectively a *workaround for low per-sample reliability*. Our
+  order-agnostic decoding raises per-sample reliability (45.5% perfect
+  vs 21.2% for orig AR, same K=1000), which means **half as many
+  samples are needed** to find a perfect design (E[K] = 2.2 vs 4.7,
+  per-puzzle E[K] = 4.3 vs 16.1, ~2-4× efficiency depending on the
+  metric). Practical implications: less compute for in-silico screening,
+  fewer wet-lab synthesis cycles, faster experimental iteration. Frame
+  the paper around "the path forward is more reliable per-sample
+  generation, not more samples". This is also why the
+  budget-vs-quality scaling curve (Fig "best of N") matters: ours
+  saturates at 95% by K=500 while AR L→R only at K=1000+ — for the
+  same compute budget you get fundamentally better coverage.
 
 ---
 
