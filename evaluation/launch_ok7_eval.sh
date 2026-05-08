@@ -68,8 +68,11 @@ run_config "bidir_random" --model bidir --inference-mode random
 run_config "bidir_paired_first" --model bidir --inference-mode paired_first
 
 # 4–8. in-painting K-sweep
-for K in 0.00 0.25 0.50 0.75 0.95; do
-    tag="bidir_inpaint_K$(printf '%02d' "$(echo "${K} * 100" | bc)")"
+# Pairs: (K_value_for_script, tag_suffix_int)
+for entry in "0.00 00" "0.25 25" "0.50 50" "0.75 75" "0.95 95"; do
+    K=$(echo "$entry" | cut -d' ' -f1)
+    KK=$(echo "$entry" | cut -d' ' -f2)
+    tag="bidir_inpaint_K${KK}"
     run_config "${tag}" --model bidir --inference-mode inpaint --inpaint-k "${K}"
 done
 
