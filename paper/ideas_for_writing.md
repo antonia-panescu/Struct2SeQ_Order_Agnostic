@@ -20,16 +20,142 @@ Tags:
   **2.15× more perfect-Jaccard designs** than the original L→R AR model
   at matched K=1000 on the OK7 100mer pseudoknot benchmark
   (9145 / 20000 = 45.5% vs 4254 / 20000 = 21.2%, same scoring pipeline).
+
+- `[NUMBER]` **OK7b 240mer headline (faithful Shujun protocol).** We
+  re-implemented Shujun's exact `test_240.py` eval protocol:
+  generate_sequence_batched(p=0.05) + generate_sequence_batched(p=0.10)
+  + generate_sequence_batched_sample(p=1.0), each at K=333 per puzzle
+  (1:1:1 ratio matching Shujun's `repeat=128` per call), plus the
+  post-hoc rescue strategy from `test_240.py:177-225` (recursive 4^k
+  enumeration on diff_pos ≤ 4 via Shujun's `search_v2.get_mutated`,
+  imported directly — no reimplementation). **AR + faithful 3-strategy
+  + rescue: 6.6% perfect, 17/20 puzzles solved**, 20,283 samples,
+  20,243 unique sequences. **Ours bidir_random argmax-only (no rescue):
+  33.2% perfect, 13/20 solved**, K=1000, 20,032 unique sequences.
+  Apples-to-apples (both with rescue): ours 32.7% perfect / 13 solved
+  vs AR 6.6% / 17 → **5.0× perfect-rate ratio in our favor on
+  per-sample reliability; AR wins on puzzle coverage 17 vs 13.**
+
+- `[NUMBER]` **Per-strategy breakdown on the AR side (240mer, K=333):**
+  topk beam k=50 = 17.1% (strongest per-sample but only 5/20 puzzles
+  due to k=50 vs K=333 budget gap); epsilon p=0.05 = 10.8% (12/20);
+  epsilon p=0.10 = 8.8% (11/20); **Q-softmax = 0.07% (2/20)**. Q-softmax
+  is essentially garbage on its own — Q-values aren't calibrated
+  probabilities, so softmax sampling drifts far off-peak. At Shujun's
+  K=98000 budget per puzzle, even 0.07% gives ~70 perfects per puzzle,
+  which works; at K=333 it gives ~0.2 perfects per puzzle = essentially
+  zero. This is a real per-sample-reliability indictment of the
+  best-of-N regime: token-level sampling on AR Q-values requires
+  enormous K to compensate for its low per-sample success rate.
+
+- `[NUMBER]` **4-strategy (paper §2.7 with beam) actually performs
+  WORSE than 3-strategy (test_240.py code).** When we add topk beam
+  k=128 to the faithful 3-strategy mix and apply rescue, we get
+  **16/20 solved** — one fewer than the 3-strategy + rescue (17/20).
+  Why: topk produces medium-quality sequences that often become the
+  per-puzzle "best non-perfect" seed, displacing the lower-jaccard
+  but more-locally-rescuable seeds from the random-search variants.
+  Rescue then can't reach jaccard=1.0 from those. **This validates
+  Shujun's design choice to comment out beam in `test_240.py`: for the
+  full pipeline, beam *hurts* puzzle coverage when paired with rescue.**
+
+- `[NUMBER]` **Even our model in L→R mode beats orig in L→R mode.**
+  Same-checkpoint ablation: bidir_identity (our checkpoint forced into
+  L→R + argmax) gets **23.7% perfect, 10/20 solved** on 240mer. Orig
+  L→R argmax gets **14.4% perfect, 5/20 solved**. So ~9 pp of the
+  perfect-rate gain is from architecture (RPE bias replacing LSTM-PE +
+  causal-conv) at fixed L→R order; the remaining ~10 pp gain to our
+  random-perm 33.2% is from order randomization. Architecture and
+  order both contribute roughly equally — paper claim should attribute
+  to both, not order alone.
+
+- `[NUMBER]` **Argmax + L→R is effectively deterministic on K=1000.**
+  Verified by counting unique sequences: orig L→R argmax-only K=1000
+  produces only 340 unique sequences (out of 20,032 samples; mean ~17
+  unique per puzzle). Our bidir_identity (same arch, L→R + argmax) gets
+  346 unique. **Our bidir_random + argmax K=1000 produces 20,032 unique
+  sequences (one per sample).** Order-randomization is the diversity
+  engine — token-level sampling is not required for our approach to
+  produce diverse-yet-reliable designs.
+
+- `[TEXT]` **DISCUSSION: Headline framing for §3 + §4.** What we
+  defensibly claim:
+  (i) Per-sample reliability — at K=1000 on OK7b 240mer, we produce
+      33.2% perfect-Jaccard designs vs the orig Struct2SeQ baseline's
+      6.6% under its full published protocol (eps0.05+eps0.10+qsoftmax
+      + rescue, faithful `test_240.py`). **5.0× ratio.**
+  (ii) Tied coverage at matched diversity engine — without rescue,
+       both AR + 3-strategy and our random-perm-argmax solve 13/20
+       puzzles. So the diversity engine alone gives the same coverage
+       at K=1000.
+  (iii) Rescue is a one-sided tool. With rescue, AR pulls ahead to
+        17/20 (we stay at 13/20). The mechanistic story below explains
+        why: rescue exploits AR's narrow-exploration failure mode
+        (1-2 base mismatches reachable by local mutation). Our
+        random-perm exploration leaves only structurally-entrenched
+        failures that local repair can't touch.
+  We do NOT claim rescue is a contribution of our method. We
+  *implemented* a bidirectional analog using in-painting (best
+  non-perfect → fix non-diff_pos → regenerate diff_pos with K=100
+  random-perm) and verified it produces identical max_jaccard per
+  puzzle as Shujun's 4^k enumeration — so neither paradigm rescues
+  our seeds. We mention this only as analysis evidence, not as a
+  proposed method.
+
+- `[NUMBER]` **Rescue strategy is a Shujun-pipeline crutch that does
+  not help our model.** Applied symmetrically to both pipelines:
+  AR + 3-strategy + rescue gains +4 puzzles solved (13 → 17). Ours +
+  rescue gains 0 puzzles (13 → 13). Why: rescue only fires when the
+  best non-perfect sequence has diff_pos ≤ 4 *and* a 1-4 nt mutation
+  reaches Jaccard=1.0. AR's failure modes are localised mismatches
+  that local repair can fix; our failure modes are structural (entire
+  pseudoknot stems wrong) that 1-4 nt edits cannot rescue. We are NOT
+  dependent on post-hoc repair to be competitive on puzzle coverage —
+  rescue is a useful AR-side tool, not a fundamental capability gap on
+  our side.
 - `[NUMBER]` Within our model, **random-perm decoding beats L→R-from-the-same-checkpoint
   by 38.6%** at producing perfect designs (45.5% vs 32.8%) — proving the
   capability lives in the *training distribution*, not just architecture.
 - `[NUMBER]` **Principled structural-motif in-painting (motif-preservation
-  mode) achieves 37.9% perfect designs** on the OK7 puzzles (vs random
-  scatter at matched mean fraction-fixed: 27.7%). Structurally-coherent
-  constraints are *easier* for the model than scattered ones.
-  **Framing**: this is the RFdiffusion / ProteinMPNN analog —
-  *fix the motif (hairpin / pseudoknot-stem), design the surrounding
-  scaffold*. The motif is the anchor; the scaffold is the design target.
+  mode, Framing A) achieves 37.9% perfect designs** on the OK7 puzzles
+  (vs random scatter at matched mean fraction-fixed: 27.7%).
+  Structurally-coherent constraints are *easier* for the model than
+  scattered ones. **Framing**: this is the RFdiffusion / ProteinMPNN
+  analog — *fix the motif (hairpin / pseudoknot-stem), design the
+  surrounding scaffold* (mean fraction designed: 85.2%). The motif is
+  the anchor; the scaffold is the design target. Solves 19/20 puzzles.
+
+- `[NUMBER]` **Motif-redesign (Framing B) — same checkpoint, inverted
+  mask — achieves 19.8% perfect designs** on the same OK7 puzzles at
+  K=1000 (3974 / 20096). Same selected motifs as Framing A; everything
+  EXCEPT the motif is fixed to WT (mean fraction designed: 14.8%).
+  Solves 13/20 puzzles. Constraint-held: 100% on 500-row sample.
+  By motif kind: hairpin 30.8% > internal_loop 19.7% > pseudoknot_stem
+  15.7%. Sweet spot at 16-25 nt motifs: 36.6% perfect.
+- `[NUMBER]` **Counter-intuitive finding: redesigning the smaller
+  fraction of positions is HARDER than redesigning the larger
+  fraction.** Framing A designs ~85% of positions and gets 37.9%
+  perfect; Framing B designs ~15% of positions and gets 19.8% perfect
+  (~half). Per-puzzle: A-wins 15/20, B-wins 4/20, tie 1/20. Both modes
+  are AR-impossible — *only the order-agnostic decoding makes both
+  directions accessible from a single checkpoint*.
+- `[NUMBER]` **The B-vs-A gap is a training-distribution mismatch, not
+  a decoding-order artifact.** We tested the natural hypothesis that
+  the gap was caused by random-perm decoding leaving parts of the
+  fixed scaffold out of the decoder's KV cache when motif positions
+  are predicted. Re-ran Framing B with **fixed-first decoding** (decode
+  all WT-scaffold positions first in random order, then the motif
+  positions in random order — putting the entire scaffold in the
+  decoder's KV cache before the motif is generated): **20.3% perfect,
+  vs 19.8% with random-perm** — only +0.5 pp. So decoder ordering
+  contributes <1 pp to the gap. The remaining ~18 pp gap is *intrinsic
+  to the train-test distribution mismatch*: the model was trained on
+  full-sequence generation with all positions free, never on "fix 85%
+  of positions to externally-specified WT, design the remaining 15%".
+  Clear future-work direction: train with mixed fraction-fixed (e.g.,
+  random K-of-WT during training) so the model learns to condition on
+  partial fixed scaffolds. Constraint-held verified: 100% on 500-row
+  sample for fixed-first variant.
 - `[NUMBER]` Sweet spot of motif size: **56.8% perfect at 16-25 nt motifs**.
   Extreme sizes are harder both ways (too small = unconstrained noise;
   too large = under-determined design problem).
@@ -106,6 +232,66 @@ Tags:
   the sampled token, but the surrounding context is *generated* by the
   model based on the constraint. The fact that the surrounding
   generates coherent structure ~38% of the time is the result.
+
+- `[TEXT]` **DISCUSSION: Mechanistic insight into Struct2SeQ inference
+  protocol (use this in §4).** The mechanistic story we landed on after
+  the K=1000 audit: in any AR generation pipeline with a single
+  decoding order (L→R), pure argmax is essentially deterministic
+  modulo CUDA float non-determinism — the model's full distribution
+  collapses to a single point estimate per puzzle, so K=1000 argmax
+  samples are ~17 unique sequences. Shujun's published K=98000
+  protocol is precisely the workaround: three different sampling rules
+  (epsilon-greedy at 5% and 10% uniform-among-allowed, plus Q-softmax
+  multinomial) inject token-level randomness to recover diversity, and
+  rescue strategy then enumerates local mutations on the best
+  near-miss when diff_pos ≤ 4. The K=98000 figure is dominated by the
+  cost of the per-step sampling rather than by genuine search: each
+  individual sample has low probability of hitting Jaccard=1.0
+  (Q-softmax 0.07%, epsilon ~10%), so massive K is needed for
+  best-of-N to pay off. **Order randomization replaces this entire
+  scaffolding.** A fresh permutation per sample produces 1000+ unique
+  sequences from one argmax-only checkpoint at K=1000. We recover the
+  full distribution through *order diversity*, not token diversity.
+  This is why we don't need rescue: diff_pos for our failure modes is
+  not constrained to be ≤ 4 (we don't fail by being one mutation away
+  from a fixed near-miss; we fail by exploring a different basin
+  entirely), so local repair doesn't apply.
+
+- `[TEXT]` **DISCUSSION: K=1000 argmax-only AR was the wrong baseline
+  to start with — note honestly in the paper.** Our initial K=1000 AR
+  baseline produced 21.2% perfect on 100mer, 14.4% on 240mer, which
+  by face value seemed to reproduce Shujun's published numbers. We
+  later discovered that argmax-only AR at K=1000 produces only ~17
+  unique sequences (CUDA float non-determinism is the only source of
+  variance across samples), so the K=1000 budget is wasted: we are
+  effectively running K~17. The numbers happened to match Shujun's
+  published K=98000 + 3-strategy + rescue numbers because both end
+  up close to the structural ceiling of an AR L→R argmax decoder for
+  these puzzles. The real comparison required equipping AR with its
+  full published diversity engine, which we did. We are honest about
+  this in §4: the per-sample-reliability gap (5.0× perfect-rate ratio)
+  is the load-bearing claim; the puzzle-coverage gap (13/20 vs 17/20
+  with rescue) goes the other way and is acknowledged as a
+  consequence of rescue's helpfulness on AR's localised failure modes.
+
+- `[TEXT]` **L→R + argmax is effectively deterministic: ~17-20 unique
+  sequences per K=1000 budget.** A direct check on our generated
+  outputs: orig Struct2SeQ at K=1000 with argmax-only L→R produces
+  only ~17-20 unique sequences per puzzle (mean 20 on 100mer, 17 on
+  240mer; the remaining ~98% of samples are exact duplicates). Our
+  own model under bidir_identity (L→R + argmax) shows the same
+  effective-K~18. The small variance is CUDA float non-determinism
+  occasionally breaking a near-tied argmax. By contrast, our
+  bidir_random (random-permutation + argmax) produces 1000+ unique
+  sequences per K=1000 budget. **Order-randomization is the diversity
+  engine, not token sampling.** This sharpens the
+  apples-to-apples comparison: at K=1000 argmax-only we get ~60×
+  more unique designs per target than the L→R AR baseline, while
+  also winning the perfect-Jaccard rate (45.5% vs 21.2%). The 3
+  decoding strategies in Shujun's published K=98000 protocol
+  (epsilon-greedy uniform, Q-softmax, topk beam) are how the AR
+  baseline gets real diversity — so the comparison "K=1000 random-perm
+  argmax (us) vs K=999 3-strategy mix (orig)" is the crucial test.
 
 - `[TEXT]` **Per-sample reliability → moving away from best-of-N as
   a crutch.** The dominant paradigm in the field — including Shujun's
@@ -253,6 +439,56 @@ Tags:
 
 ---
 
+## Conclusion / framing
+
+- `[TEXT]` **Random-permutation decoding is the headline algorithmic
+  contribution.** Concretely: at inference, for each sample we draw a
+  fresh `perm = randperm(L)` and decode the L positions in that order
+  using the bidirectionally-trained policy with relative-position bias
+  (no causal mask, no L→R commitment). The same checkpoint can also do
+  paired-first / loop-outward / fixed-positions-first by swapping the
+  permutation rule — random uniform-perm is the default and the
+  strongest single-strategy choice on OK7. This is what makes
+  in-painting (Framing A and B), motif-redesign, and arbitrary
+  conditional generation fall out of one trained model. Frame the
+  conclusion around: *the algorithmic pivot from "AR L→R" to
+  "stochastic permutation decoding" is the contribution; the perfect-
+  Jaccard / sample-efficiency / motif-inpainting numbers are
+  consequences of it.*
+- `[TEXT]` **Why random-perm wins over the same checkpoint's L→R
+  inference.** Same weights, only the inference-time decoding order
+  differs (random-perm 45.5% perfect vs L→R-from-bidir 32.8%).
+  Mechanism: averaging over many decoding orders lets the model
+  "vote" using whatever order is easiest for that particular target
+  — paired positions can be committed early when the sample's first
+  draws happen to land there, scaffolds can be filled around an early-
+  committed motif when the perm orders things that way, etc. Random-
+  perm is essentially a **mixture of conditional distributions over
+  decoding orders**, and that mixture concentrates more probability
+  on perfect-Jaccard sequences than any single fixed order. This is a
+  clean, paper-quotable framing that does not require any tuning
+  knob — drawing a uniform perm per sample is the algorithm.
+
+---
+
+## Cross-checks vs Shujun's writeup
+
+- `[TEXT]` **What is and isn't directly readable from Shujun's
+  writeup.** Figs 4 (Struct2SeQ) and 5 (Struct2SeQ-SHAPE) of the
+  reference writeup are exactly the *per-puzzle perfect-Jaccard counts*
+  we want as reference bars — the numbers (AK_PK100-3, Diplonema, E.
+  coli, …) are printed on each bar at K=98000. So we can read these
+  off directly without re-asking Shujun. The thing we still need to
+  ask Shujun for is the **raw 80th-percentile OpenKnot score per
+  puzzle**, because Fig 7 only publishes the *z-scored* 80th-pct OK
+  scores (across-method normalization for the CASP-style summed bar
+  chart) — the raw 80th-pct OK values are not given anywhere in the
+  paper. So when we follow up with Shujun, narrow the ask to: "raw
+  80th-pct OK scores per puzzle for K=98000 Struct2SeQ and
+  Struct2SeQ-SHAPE on OK7 100mer."
+
+---
+
 ## Future work (for paper §4)
 
 - `[TEXT]` **Targeted application to aptamer / ligand-binding sites.**
@@ -262,6 +498,27 @@ Tags:
   the surrounding structural context. This is the natural synth-bio
   follow-up to the proof-of-concept here, paired with experimental
   validation (Eterna OpenKnot rounds, in-vitro binding assays).
+- `[TEXT]` **Better rescue mechanisms for order-agnostic models.**
+  Local mutation rescue (Shujun's 4^k enumeration) and our model-guided
+  in-painting rescue both hit the same structural ceiling on our K=1000
+  output: failures are not 1-4 nt off, they're whole-context off.
+  Future directions worth investigating: (a) multi-seed bidir-rescue
+  (rescue from top-N non-perfect, not just top-1, so different fixed
+  scaffolds give different rescue contexts); (b) iterated refinement
+  (rescue → re-evaluate diff_pos → rescue again, local-search style);
+  (c) structurally-aware order ensembles within each rescue (paired-first,
+  loop-outward); (d) RL-fine-tuning specifically on near-misses so the
+  model learns to escape structural basins. These are deferred; the
+  current paper's claim does not depend on them.
+
+- `[TEXT]` **Train with mixed fraction-fixed (in-painting-aware
+  training).** Our motif-redesign result (Framing B) shows the model
+  has a real but limited capability when ~85% of positions are
+  externally fixed — because training never exposed it to that
+  conditioning regime. Adding a random K-of-WT mask to a fraction of
+  training samples (sampled K ∈ [0, 1]) would give the model explicit
+  experience filling small free regions inside large fixed scaffolds.
+  Should close most of the ~18 pp B-vs-A gap.
 - `[TEXT]` **Order-strategy ablation across all 20 puzzles** (paired-first
   vs loop-outward vs hardest-first).
 - `[TEXT]` **Graded reward** (partner-distance or target-OK score)

@@ -121,6 +121,19 @@ def parse_args() -> argparse.Namespace:
               "Avoids degenerate 'fix 89%% of structure' cases."),
     )
     p.add_argument(
+        "--sampling-mode",
+        choices=["argmax", "qsoftmax", "epsilon"],
+        default="argmax",
+        help=("argmax (default): pure greedy argmax, no token-level "
+              "sampling; qsoftmax: multinomial sampling from softmax "
+              "over Q-values (matches Shujun's strategy 2); epsilon: "
+              "argmax with p=0.1 of uniform-among-allowed-bases sampling "
+              "(matches Shujun's strategy 1). Applies to all "
+              "inference modes that use generate_permuted."),
+    )
+    p.add_argument("--sampling-p", type=float, default=0.1,
+                   help="epsilon probability for --sampling-mode=epsilon.")
+    p.add_argument(
         "--decode-order",
         choices=["random", "fixed_first"],
         default="random",
@@ -576,9 +589,17 @@ def main():
                 else:
                     perm = make_perm(B, L, args.inference_mode, src, device, rng)
                     fixed = None
+                if args.sampling_mode == "argmax":
+                    _gen_mode, _gen_p = "epsilon_argmax", 0.0
+                elif args.sampling_mode == "qsoftmax":
+                    _gen_mode, _gen_p = "sample", 1.0
+                elif args.sampling_mode == "epsilon":
+                    _gen_mode, _gen_p = "epsilon_argmax", float(args.sampling_p)
+                else:
+                    raise ValueError(args.sampling_mode)
                 seqs = generate_permuted(
                     model, src, ct_matrix, target_correspondence,
-                    perm=perm, mode="epsilon_argmax", p=0.0,
+                    perm=perm, mode=_gen_mode, p=_gen_p,
                     fixed=fixed,
                 )
 
@@ -651,6 +672,8 @@ def merge_and_summarize(out_dir: Path, num_ranks: int, puzzles: List[Puzzle], ar
         cfg_tag = f"{args.model}_{args.inference_mode}"
     if args.inference_mode == "inpaint" and args.decode_order == "fixed_first":
         cfg_tag = f"{cfg_tag}_fixedfirst"
+    if args.sampling_mode != "argmax":
+        cfg_tag = f"{cfg_tag}_{args.sampling_mode}"
     for pz in puzzles:
         sub = all_df[all_df["puzzle_idx"] == pz.idx]
         if len(sub) == 0:
