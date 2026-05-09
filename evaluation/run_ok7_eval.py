@@ -103,17 +103,35 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--inpaint-k", type=float, default=0.0,
                    help="Fraction of WT positions to fix (only for scatter inpaint).")
     p.add_argument(
-        "--motif-mode", choices=["scatter", "structural"], default="scatter",
+        "--motif-mode",
+        choices=["scatter", "structural", "structural_redesign"],
+        default="scatter",
         help=("scatter = uniform-random K-of-WT (legacy); "
-              "structural = pick one principled motif from the puzzle's "
-              "motif inventory per sample (hairpin / internal_loop / "
-              "multi_loop / pseudoknot_stem). Only used when --inference-mode "
-              "is inpaint."),
+              "structural = pick one principled motif and FIX it to WT, "
+              "redesign the surrounding scaffold (motif-preservation, "
+              "Framing A — RFdiffusion / ProteinMPNN analog); "
+              "structural_redesign = pick one principled motif and fix "
+              "EVERYTHING ELSE to WT, redesign just the motif itself "
+              "(motif-redesign, Framing B — local mutagenesis around a "
+              "fixed scaffold). Only used when --inference-mode is inpaint."),
     )
     p.add_argument(
         "--max-motif-fraction", type=float, default=0.5,
         help=("Skip motifs covering more than this fraction of the puzzle. "
               "Avoids degenerate 'fix 89%% of structure' cases."),
+    )
+    p.add_argument(
+        "--decode-order",
+        choices=["random", "fixed_first"],
+        default="random",
+        help=("random = uniform-random permutation (default, matches "
+              "training); fixed_first = decode all fixed scaffold "
+              "positions first (random within), then the free positions "
+              "(random within). Only meaningful with --inference-mode "
+              "inpaint. With fixed_first, the decoder sees the entire "
+              "fixed scaffold in its KV cache before designing the free "
+              "positions — closer to the conceptual 'condition on the "
+              "scaffold, generate the motif' framing."),
     )
     p.add_argument(
         "--targets-csv", type=str,
@@ -155,10 +173,12 @@ def load_puzzles(csv_path: str, limit: Optional[int] = None) -> List[Puzzle]:
         wt_seq = row["Sequence"]
         length = int(row["Length"])
         if len(target_db) != length or len(wt_seq) != length:
-            raise ValueError(
-                f"Row {i} ({title}): length mismatch db={len(target_db)} "
-                f"wt={len(wt_seq)} declared={length}"
-            )
+            # Some 240mer puzzles have a 1-position discrepancy in the
+            # CSV's declared Length column. Trust db/wt instead.
+            actual = min(len(target_db), len(wt_seq))
+            target_db = target_db[:actual]
+            wt_seq = wt_seq[:actual]
+            length = actual
         puzzles.append(
             Puzzle(
                 idx=i,
@@ -245,6 +265,13 @@ def make_perm(B: int, L: int, mode: str, src: torch.Tensor, device, rng: np.rand
             p = rng.permutation(L)
             perms.append(torch.from_numpy(p).long())
         return torch.stack(perms).to(device)
+    if mode == "fixed_first":
+        # Caller must use make_perm_fixed_first instead — this branch is only
+        # reachable if someone passes "fixed_first" without the fixed mask.
+        raise ValueError(
+            "make_perm(mode='fixed_first', ...) requires the fixed mask; "
+            "call make_perm_fixed_first(fixed, rng, device) instead."
+        )
     if mode == "paired_first":
         # paired-in-target indicator: src token == 0 means '.' (unpaired);
         # any other db token (open/close brackets) is paired. Decode paired
@@ -260,6 +287,28 @@ def make_perm(B: int, L: int, mode: str, src: torch.Tensor, device, rng: np.rand
             perms.append(torch.from_numpy(order).long())
         return torch.stack(perms).to(device)
     raise ValueError(f"unknown perm mode: {mode}")
+
+
+def make_perm_fixed_first(
+    fixed: torch.Tensor, rng: np.random.Generator, device,
+) -> torch.Tensor:
+    """Return [B, L] perm where each row puts fixed positions (fixed[b,i] >= 0)
+    first in random order, then the free positions (fixed[b,i] == -1) in
+    random order. Used so the decoder's KV cache contains the entire
+    fixed scaffold before any free position is designed.
+    """
+    B, L = fixed.shape
+    fixed_cpu = fixed.detach().cpu().numpy()
+    perms = []
+    for b in range(B):
+        is_fixed = fixed_cpu[b] >= 0
+        fixed_idx = np.where(is_fixed)[0]
+        free_idx = np.where(~is_fixed)[0]
+        rng.shuffle(fixed_idx)
+        rng.shuffle(free_idx)
+        order = np.concatenate([fixed_idx, free_idx])
+        perms.append(torch.from_numpy(order).long())
+    return torch.stack(perms).to(device)
 
 
 def make_fixed(
@@ -285,12 +334,18 @@ def make_fixed_motif(
     B: int, L: int, wt_indices: torch.Tensor,
     puzzle_idxs_in_batch: List[int], lengths_in_batch: List[int],
     motif_inventories: dict, rng: np.random.Generator, device,
+    invert: bool = False,
 ):
     """Pick one motif at random from each row's puzzle inventory and build
     a [B, L] fixed tensor. Returns (fixed_tensor, list_of_(kind, size)).
 
     motif_inventories: dict[puzzle_idx] -> list of motifs
                         each motif: {"kind", "positions", "size"}
+
+    invert=False (Framing A, motif-preservation): fix the motif positions
+        to WT, regenerate everything else.
+    invert=True (Framing B, motif-redesign): fix everything EXCEPT the
+        motif to WT, regenerate just the motif.
     """
     fixed = torch.full((B, L), -1, dtype=torch.long, device=device)
     motif_meta = []
@@ -303,8 +358,15 @@ def make_fixed_motif(
             continue
         # pick uniformly at random
         m = motifs[int(rng.integers(0, len(motifs)))]
-        for pos in m["positions"]:
-            if 0 <= pos < Lb:
+        motif_pos_set = {int(p) for p in m["positions"] if 0 <= int(p) < Lb}
+        if invert:
+            # fix everything except the motif positions
+            for pos in range(Lb):
+                if pos not in motif_pos_set:
+                    fixed[b, pos] = int(wt_indices[b, pos].item())
+        else:
+            # fix the motif positions
+            for pos in motif_pos_set:
                 fixed[b, pos] = int(wt_indices[b, pos].item())
         motif_meta.append((m["kind"], m["size"]))
     return fixed, motif_meta
@@ -388,9 +450,10 @@ def main():
         for pz in puzzles
     ]
 
-    # Build motif inventory for structural in-painting mode.
+    # Build motif inventory for structural in-painting modes (both
+    # motif-preservation and motif-redesign use the same inventory).
     motif_inventories: dict = {}
-    if args.motif_mode == "structural":
+    if args.motif_mode in ("structural", "structural_redesign"):
         from evaluation.motif_extraction import extract_motifs
         for pz in puzzles:
             ms = extract_motifs(pz.target_db)
@@ -495,15 +558,21 @@ def main():
                 )
             else:
                 if args.inference_mode == "inpaint":
-                    perm = make_perm(B, L, "inpaint", src, device, rng)
-                    if args.motif_mode == "structural":
+                    # Build the fixed mask first; perm depends on it when
+                    # decode_order=fixed_first.
+                    if args.motif_mode in ("structural", "structural_redesign"):
                         fixed, motif_meta = make_fixed_motif(
                             B, L, wt_indices,
                             puzzle_idxs, [int(x.item()) for x in lengths],
                             motif_inventories, rng, device,
+                            invert=(args.motif_mode == "structural_redesign"),
                         )
                     else:
                         fixed = make_fixed(B, L, wt_indices, args.inpaint_k, rng, device)
+                    if args.decode_order == "fixed_first" and fixed is not None:
+                        perm = make_perm_fixed_first(fixed, rng, device)
+                    else:
+                        perm = make_perm(B, L, "inpaint", src, device, rng)
                 else:
                     perm = make_perm(B, L, args.inference_mode, src, device, rng)
                     fixed = None
@@ -574,10 +643,14 @@ def merge_and_summarize(out_dir: Path, num_ranks: int, puzzles: List[Puzzle], ar
     rows = []
     if args.inference_mode == "inpaint" and args.motif_mode == "structural":
         cfg_tag = f"{args.model}_motifs_structural"
+    elif args.inference_mode == "inpaint" and args.motif_mode == "structural_redesign":
+        cfg_tag = f"{args.model}_motifs_redesign"
     elif args.inference_mode == "inpaint":
         cfg_tag = f"{args.model}_inpaint_K{args.inpaint_k:.2f}"
     else:
         cfg_tag = f"{args.model}_{args.inference_mode}"
+    if args.inference_mode == "inpaint" and args.decode_order == "fixed_first":
+        cfg_tag = f"{cfg_tag}_fixedfirst"
     for pz in puzzles:
         sub = all_df[all_df["puzzle_idx"] == pz.idx]
         if len(sub) == 0:
