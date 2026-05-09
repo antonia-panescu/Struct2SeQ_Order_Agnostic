@@ -135,16 +135,15 @@ def parse_args() -> argparse.Namespace:
                    help="epsilon probability for --sampling-mode=epsilon.")
     p.add_argument(
         "--decode-order",
-        choices=["random", "fixed_first"],
+        choices=["random", "fixed_first", "identity"],
         default="random",
         help=("random = uniform-random permutation (default, matches "
               "training); fixed_first = decode all fixed scaffold "
-              "positions first (random within), then the free positions "
-              "(random within). Only meaningful with --inference-mode "
-              "inpaint. With fixed_first, the decoder sees the entire "
-              "fixed scaffold in its KV cache before designing the free "
-              "positions — closer to the conceptual 'condition on the "
-              "scaffold, generate the motif' framing."),
+              "positions first then free positions (random within "
+              "each); identity = strict L→R order. With identity + "
+              "fixed=motif this reproduces AR teacher-forced motif "
+              "preservation on our checkpoint (same checkpoint as "
+              "random-perm, only decoding paradigm differs)."),
     )
     p.add_argument(
         "--targets-csv", type=str,
@@ -584,6 +583,8 @@ def main():
                         fixed = make_fixed(B, L, wt_indices, args.inpaint_k, rng, device)
                     if args.decode_order == "fixed_first" and fixed is not None:
                         perm = make_perm_fixed_first(fixed, rng, device)
+                    elif args.decode_order == "identity":
+                        perm = torch.arange(L, device=device).unsqueeze(0).expand(B, L).contiguous()
                     else:
                         perm = make_perm(B, L, "inpaint", src, device, rng)
                 else:
@@ -672,6 +673,8 @@ def merge_and_summarize(out_dir: Path, num_ranks: int, puzzles: List[Puzzle], ar
         cfg_tag = f"{args.model}_{args.inference_mode}"
     if args.inference_mode == "inpaint" and args.decode_order == "fixed_first":
         cfg_tag = f"{cfg_tag}_fixedfirst"
+    if args.inference_mode == "inpaint" and args.decode_order == "identity":
+        cfg_tag = f"{cfg_tag}_LR"
     if args.sampling_mode != "argmax":
         cfg_tag = f"{cfg_tag}_{args.sampling_mode}"
     for pz in puzzles:

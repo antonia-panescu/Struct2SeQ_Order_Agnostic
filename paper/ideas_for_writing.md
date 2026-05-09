@@ -113,6 +113,54 @@ Tags:
   evidence supporting the structural-ceiling explanation, NOT as a
   proposed method.
 
+- `[TEXT]` **DISCUSSION: Why rescue doesn't help our model — over-pair
+  vs under-pair failure-mode asymmetry.** This is a paper-worthy
+  mechanistic explanation for the rescue asymmetry, verified by
+  manual scoring.
+  - Rescue (Shujun's `test_240.py:177-225`) runs on the per-puzzle
+    best non-perfect seed. It enumerates 4^k mutations at
+    `diff_pos = positions where target's pair-partner vec ≠
+    predicted's pair-partner vec`, scores each via the same
+    RibonanzaNet-SS + Hungarian path. Algorithmically identical
+    regardless of the decoding regime that produced the seed.
+  - **Empirically, rescue success depends on the seed's failure-mode
+    type:**
+    - **Over-pair errors** (predicted has an extra pair the target
+      doesn't want): rescue easily breaks the pair by mutating to
+      non-Watson-Crick. AR's narrow-exploration argmax+sampling tends
+      to produce these.
+    - **Under-pair errors** (target wants a pair the network
+      refuses to predict): rescue cannot create the pair, because
+      RibonanzaNet's pair prediction is *context-dependent* —
+      mutating the bases at diff_pos to any of the 6 WC combinations
+      (A-U, U-A, C-G, G-C, G-U, U-G) doesn't trigger pair prediction
+      if the surrounding 200+ bases don't support it. Random-perm +
+      argmax tends to produce these.
+  - **Manual verification (puzzle 12, UC2414, 240mer)**: ours seed
+    has diff_pos=[14,21], target wants 14↔21 paired, predicted
+    unpaired. Bases at [14,21] are already C-G (Watson-Crick).
+    Scored ALL 16 mutations: max jaccard = 0.984 (no improvement);
+    none of the 6 WC combinations produces a 14↔21 pair in the
+    predicted structure. By contrast AR seed for the same puzzle has
+    diff_pos=[109,138] (over-pair, A-U); rescue → 1.0.
+  - **Not a seed-of-the-day artefact**: multi-seed bidir-rescue
+    using top-5 distinct non-perfect seeds (5×K=100 = 500 candidates
+    per puzzle) gives the same ceiling (max jaccard 0.90-0.99,
+    never 1.0). Random-perm + argmax *systematically* produces
+    under-pair failures on the puzzles it leaves unsolved at K=1000;
+    this is not a stochastic artifact of which seed we picked.
+  - **Implication**: rescue is not architecture-blind. Its
+    effectiveness depends on the failure-mode locality of the
+    generator, which differs by decoding regime. AR's failure modes
+    (extra pairs) are *locally rescuable* by 4^k mutation; ours
+    (missing context-dependent pairs) require a different repair
+    paradigm (more compute / RL fine-tuning on under-pair near-misses
+    / larger-radius search). This is a clean mechanistic explanation
+    for the otherwise-puzzling rescue asymmetry. We frame it as a
+    finding, not a limitation: random-perm decoding produces
+    error modes that *expose* the network's context-dependent pair
+    prediction biases, in a way L→R AR doesn't.
+
 - `[NUMBER]` **Rescue strategy is a Shujun-pipeline crutch that does
   not help our model.** Applied symmetrically to both pipelines:
   AR + 3-strategy + rescue gains +4 puzzles solved (13 → 17). Ours +
