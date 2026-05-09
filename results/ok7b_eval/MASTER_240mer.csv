@@ -23,6 +23,16 @@ bidir_identity_240mer,"Ours: bidir_identity (L→R from same checkpoint, argmax)
 bidir_motifs_structural_240mer,Ours: bidir + structural motif-preservation in-painting,ours_inpaint,20032,20032,25.69,13,20,0.8856,83.05,ok
 bidir_identity_3strategies_240mer,Ours: bidir_identity (L→R) + faithful 3-strategy,ours_AR_full,20160,20139,9.38,12,20,0.7066,77.64,ok
 bidir_identity_3strategies_rescue_240mer,Ours: bidir_identity (L→R) + faithful 3-strategy + rescue,ours_AR_full,20730,20709,9.13,13,20,0.7129,77.89,ok
+orig_motifs_structural_240mer,"AR motif argmax-only (teacher-forced, K=1000)",inpaint_AR,20032,6028,11.17,7,20,0.8456,80.69,ok
+orig_motifs_structural_rescue_240mer,AR motif argmax-only + rescue,inpaint_AR,21142,7138,10.69,12,20,0.849,80.66,ok
+orig_motifs_structural_3strategies_240mer,AR motif + 3-strategy,inpaint_AR,19776,19756,5.45,13,20,0.7525,78.05,ok
+orig_motifs_structural_3strategies_rescue_240mer,AR motif + 3-strategy + rescue (full Shujun protocol),inpaint_AR,20331,20311,5.33,14,20,0.7568,78.26,ok
+bidir_motifs_structural_LR_argmax_240mer,"Ours-LR motif argmax-only (our ckpt, L→R, teacher-forced)",inpaint_ours_LR,20032,2587,18.41,11,20,0.8088,80.87,ok
+bidir_motifs_structural_LR_3strategies_240mer,Ours-LR motif + 3-strategy,inpaint_ours_LR,20160,20147,7.6,12,20,0.7084,78.16,ok
+bidir_motifs_structural_LR_3strategies_rescue_240mer,Ours-LR motif + 3-strategy + rescue,inpaint_ours_LR,20985,20972,7.31,12,20,0.7164,78.43,ok
+bidir_motifs_structural_random_240mer,"Ours-random-perm motif preservation (argmax, native)",inpaint_ours_random,20032,20032,25.69,13,20,0.8856,83.05,ok
+bidir_motifs_structural_rescue_240mer,Ours-random-perm motif preservation + rescue,inpaint_ours_random,20362,20362,25.28,13,20,0.8862,83.11,ok
+bidir_motifs_redesign_240mer,Ours-random-perm motif redesign (AR-impossible),inpaint_ours_random,20032,11545,8.79,5,20,0.7566,81.21,ok
 bidir_random_epsilon05_240mer,Ours: bidir_random + epsilon p=0.05 (K=333),ours_per_strategy,6688,6688,24.03,13,20,0.8846,83.27,ok
 bidir_random_3strategies_240mer,Ours: bidir_random + faithful 3-strategy (eps0.05+eps0.10+qsoftmax),ours_full,20128,20128,13.65,14,20,0.7542,79.18,ok
 bidir_random_3strategies_rescue_240mer,Ours: bidir_random + faithful 3-strategy + rescue,ours_full,20443,20443,13.44,15,20,0.757,79.21,ok

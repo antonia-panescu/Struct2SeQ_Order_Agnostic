@@ -137,7 +137,7 @@ columns from prior drafts — the 4-page limit doesn't allow them.
     \midrule
     \textbf{Motif preservation}                          & \textbf{25.69} & \textbf{13/20} \\
     Motif preservation + rescue                          & 25.28  & 13/20 \\
-    Motif redesign (AR-impossible)                       & 19.82  & 13/20 \\
+    Motif redesign (AR-impossible)                       & 8.79   & 5/20  \\
     \bottomrule
   \end{tabular}
 \end{table*}

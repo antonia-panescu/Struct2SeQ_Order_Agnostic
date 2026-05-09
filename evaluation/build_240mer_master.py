@@ -124,6 +124,52 @@ CONFIGS = [
      "Ours: bidir_identity (L→R) + faithful 3-strategy + rescue",
      "ours_AR_full"),
 
+    # In-painting comparison: AR motif full Shujun protocol
+    ("orig_motifs_structural_240mer",
+     "orig_struct2seq_motifs_structural_240mer",
+     "AR motif argmax-only (teacher-forced, K=1000)",
+     "inpaint_AR"),
+    ("orig_motifs_structural_rescue_240mer",
+     "orig_struct2seq_motifs_structural_rescue_240mer",
+     "AR motif argmax-only + rescue",
+     "inpaint_AR"),
+    ("orig_motifs_structural_3strategies_240mer",
+     "orig_motifs_structural_3strategies_240mer",
+     "AR motif + 3-strategy",
+     "inpaint_AR"),
+    ("orig_motifs_structural_3strategies_rescue_240mer",
+     "orig_motifs_structural_3strategies_rescue_240mer",
+     "AR motif + 3-strategy + rescue (full Shujun protocol)",
+     "inpaint_AR"),
+
+    # In-painting comparison: ours-LR (our checkpoint, AR-mode) motif
+    ("bidir_motifs_structural_LR_argmax_240mer",
+     "bidir_motifs_structural_LR_argmax_240mer",
+     "Ours-LR motif argmax-only (our ckpt, L→R, teacher-forced)",
+     "inpaint_ours_LR"),
+    ("bidir_motifs_structural_LR_3strategies_240mer",
+     "bidir_motifs_structural_LR_3strategies_240mer",
+     "Ours-LR motif + 3-strategy",
+     "inpaint_ours_LR"),
+    ("bidir_motifs_structural_LR_3strategies_rescue_240mer",
+     "bidir_motifs_structural_LR_3strategies_rescue_240mer",
+     "Ours-LR motif + 3-strategy + rescue",
+     "inpaint_ours_LR"),
+
+    # In-painting comparison: ours-random-perm (native)
+    ("bidir_motifs_structural_random_240mer",
+     "bidir_motifs_structural_240mer",
+     "Ours-random-perm motif preservation (argmax, native)",
+     "inpaint_ours_random"),
+    ("bidir_motifs_structural_rescue_240mer",
+     "bidir_motifs_structural_rescue_240mer",
+     "Ours-random-perm motif preservation + rescue",
+     "inpaint_ours_random"),
+    ("bidir_motifs_redesign_240mer",
+     "bidir_motifs_redesign_240mer",
+     "Ours-random-perm motif redesign (AR-impossible)",
+     "inpaint_ours_random"),
+
     # Symmetric ablation: ours under random-perm + 3-strategy + rescue (NEW symmetric)
     ("bidir_random_epsilon05_240mer",
      "bidir_random_epsilon05_240mer",
@@ -198,6 +244,10 @@ def main():
     oa = df[df["group"].isin(["ours_per_strategy", "ours_ablation", "ours_inpaint",
                                "ours_AR_full", "ours_rescue_ablation"])]
     print(oa[cols].to_string(index=False))
+    print()
+    print("=== IN-PAINTING ABLATION (architecture vs paradigm) ===")
+    ip = df[df["group"].isin(["inpaint_AR", "inpaint_ours_LR", "inpaint_ours_random"])]
+    print(ip[cols].to_string(index=False))
 
 
 if __name__ == "__main__":
