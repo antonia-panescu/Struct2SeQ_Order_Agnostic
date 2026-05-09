@@ -79,27 +79,38 @@ Tags:
   produce diverse-yet-reliable designs.
 
 - `[TEXT]` **DISCUSSION: Headline framing for §3 + §4.** What we
-  defensibly claim:
-  (i) Per-sample reliability — at K=1000 on OK7b 240mer, we produce
-      33.2% perfect-Jaccard designs vs the orig Struct2SeQ baseline's
-      6.6% under its full published protocol (eps0.05+eps0.10+qsoftmax
-      + rescue, faithful `test_240.py`). **5.0× ratio.**
-  (ii) Tied coverage at matched diversity engine — without rescue,
-       both AR + 3-strategy and our random-perm-argmax solve 13/20
-       puzzles. So the diversity engine alone gives the same coverage
-       at K=1000.
-  (iii) Rescue is a one-sided tool. With rescue, AR pulls ahead to
-        17/20 (we stay at 13/20). The mechanistic story below explains
-        why: rescue exploits AR's narrow-exploration failure mode
-        (1-2 base mismatches reachable by local mutation). Our
-        random-perm exploration leaves only structurally-entrenched
-        failures that local repair can't touch.
-  We do NOT claim rescue is a contribution of our method. We
-  *implemented* a bidirectional analog using in-painting (best
-  non-perfect → fix non-diff_pos → regenerate diff_pos with K=100
-  random-perm) and verified it produces identical max_jaccard per
-  puzzle as Shujun's 4^k enumeration — so neither paradigm rescues
-  our seeds. We mention this only as analysis evidence, not as a
+  defensibly claim — both metrics reported uniformly throughout:
+
+  **Across-protocol headline (their best vs our best, K~1000):**
+  - perfect%: ours 33.24% vs AR + full Shujun protocol 6.64% = **5.0× ratio**
+  - solved: AR 17/20 vs ours 13/20 (AR's coverage lead is the rescue contribution)
+
+  **Matched-protocol comparison (both under faithful 3-strategy + rescue):**
+  - perfect%: ours 13.44% vs AR 6.64% = **2.0× ratio**
+  - solved: AR 17 vs ours 15 (AR leads by 2 puzzles)
+  - *Same protocol, our checkpoint wins per-sample reliability 2×; AR
+    wins coverage by 2 puzzles via rescue's affinity for narrow-
+    exploration near-misses.*
+
+  **Operating points (we offer a Pareto frontier; AR has only one regime):**
+  - Best per-sample reliability: ours bidir_random argmax-only K=1000 → 33.24% / 13
+  - Best ours coverage: ours bidir_random + 3-strat + rescue → 13.44% / 15
+  - AR cannot access the high-reliability regime: AR L→R argmax-only
+    is ~14% / 5 (effectively K~17 unique seqs, deterministic).
+
+  **Rescue is good — for both pipelines.** It's not a "crutch we
+  dismiss"; it's a real tool that works on our model too when paired
+  with the 3-strategy generation (gives ours +1 puzzle: 14 → 15).
+  The reason it gives AR a bigger boost (+4 puzzles: 13 → 17) is that
+  AR generates more locally-rescuable near-misses by structure (narrow
+  exploration). Our argmax-only K=1000 produces zero
+  locally-rescuable seeds (verified by Shujun-rescue + bidir-rescue
+  + multi-seed bidir-rescue all giving 0/7 successful rescues). So
+  rescue's effectiveness depends on the kind of failure modes the
+  generator produces.
+
+  Frame the bidir-rescue + multi-seed-bidir-rescue work as analysis
+  evidence supporting the structural-ceiling explanation, NOT as a
   proposed method.
 
 - `[NUMBER]` **Rescue strategy is a Shujun-pipeline crutch that does

@@ -184,8 +184,9 @@ def main():
     df.to_csv(out, index=False)
     print(f"Wrote {out}")
     print()
-    print("=== HEADLINE COMPARISON ===")
-    headline = df[df["group"].isin(["AR_baseline", "AR_baseline_rescue", "AR_full", "ours"])]
+    print("=== HEADLINE COMPARISON (matched protocols, paper-ready) ===")
+    headline = df[df["group"].isin(["AR_baseline", "AR_baseline_rescue", "AR_full",
+                                     "ours", "ours_full"])]
     cols = ["label", "n_samples", "n_unique_seqs", "perfect_pct", "puzzles_solved", "n_puzzles", "mean_jaccard"]
     print(headline[cols].to_string(index=False))
     print()
@@ -193,8 +194,9 @@ def main():
     ps = df[df["group"] == "AR_per_strategy"]
     print(ps[cols].to_string(index=False))
     print()
-    print("=== OURS ABLATIONS ===")
-    oa = df[df["group"].isin(["ours_per_strategy", "ours_ablation", "ours_inpaint"])]
+    print("=== OURS PER-STRATEGY + ABLATIONS ===")
+    oa = df[df["group"].isin(["ours_per_strategy", "ours_ablation", "ours_inpaint",
+                               "ours_AR_full", "ours_rescue_ablation"])]
     print(oa[cols].to_string(index=False))
 
 
