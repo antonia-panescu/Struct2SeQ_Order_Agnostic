@@ -601,3 +601,22 @@ the right section above when drafting.)
   way fewer samples per target to beat the original method which used
   98 000 samples in the published paper. This stays in the main text;
   figures show only the matched-budget comparison.
+
+- **Rescue saturation finding** (Antonia + Claude, 03:50 UTC May 9):
+  Of the 7 OK7b 240mer puzzles our `bidir_random` doesn't solve at
+  K=1000, **6 have best-near-miss diff_pos ≤ 4** (within Shujun's
+  rescue-strategy enumeration regime: 4ᵏ candidate combinations).
+  Rescue ran on all 6 and exhausted the candidate space without
+  finding any sequence with Jaccard=1.0 (max post-rescue Jaccards:
+  0.956, 0.979, 0.978, 0.981, 0.984, 0.989 across puzzles 0/3/4/5/12/17).
+  The 7th unsolved puzzle (Crazy Legs study 7) has diff_pos = 13 — way
+  outside the rescue regime. **Implication**: even the most aggressive
+  brute-force search (per-position enumeration over near-misses) hits
+  a structural ceiling. Reinforces the "moving away from best-of-N as
+  a crutch — invest in per-sample model quality" framing. Tag as
+  `[TEXT]`/`[NUMBER]`/`[REVIEWER]`. Likely placement: Discussion,
+  one paragraph after the sample-efficiency / best-of-N framing.
+  Also forecloses a reviewer pushback: "did you try increasing the
+  rescue threshold?" — answer: 6/6 amenable puzzles already exhaust
+  the search at threshold=4; the others (puzzle 19 with diff_pos=13)
+  are not rescuable by any reasonable threshold (4¹³ = 67M candidates).

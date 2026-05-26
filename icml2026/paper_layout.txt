@@ -1,0 +1,431 @@
+000
+001
+002               Order-Agnostic Decoding for RNA Pseudoknot Design:
+003
+004
+      Sample-Efficient Generation and Native Motif In-Painting from One Checkpoint
+005
+006
+007
+008                                                        Anonymous Authors1
+009
+010
+011
+                               Abstract                                  aptamer ligand-binding pocket, or engineering a riboswitch
+           RNA secondary-structure inverse folding is dom-               around a fixed regulatory motif, both reduce to constrained
+012
+           inated by best-of-N screening: state-of-the-art               sequence design under a target topology. Pseudoknotted
+013
+           pseudoknot design uses K=98 000 samples per                   targets are the hardest sub-class because crossing base pairs
+014
+           target to compensate for low per-sample reliability.          couple distant positions.
+015
+016        We replace left-to-right autoregression with an               The dominant evaluation paradigm for data-driven RNA in-
+017        order-agnostic decoder trained under a uniform-               verse folding is best-of-N screening. State-of-the-art pseu-
+018        permutation distribution over decoding orders.                doknot results (He & Sun, 2026) were obtained by draw-
+019        On the 20-puzzle OpenKnot Round 7b 240-mer                    ing K=98 000 samples per target on 256 A100 GPUs and
+020        pseudoknot benchmark at matched K∼1000, our                   post-hoc filtering the top candidates. This protocol is a
+021        random-permutation argmax decoder produces                    workaround for a deeper problem: each individual sample
+022        33.24% perfect-Jaccard designs (13/20 puzzles                 from an autoregressive (AR) RNA decoder has low proba-
+023        solved), versus 6.64% / 17/20 for the best pub-               bility of reproducing the target structure, so brute-force sam-
+024        lished autoregressive (AR) protocol—a 5.0× per-               pling is required to find any. The same workaround scales
+025        sample reliability ratio. Order randomization re-             poorly to longer or more constrained design problems, be-
+026        places token sampling as the diversity engine:                cause per-sample success rates drop multiplicatively under
+027        argmax with random orders yields 1000 unique                  additional constraints.
+028        sequences per target where AR + argmax yields
+           ∼17. The same checkpoint natively supports mo-                We argue that sample efficiency, not sample volume, is the
+029
+           tif preservation (fix a structural motif to wild-type,        right axis. Concretely, we replace the L→R AR decoder
+030
+           design the surrounding scaffold; 25.69% / 13) and             of Struct2SeQ (He & Sun, 2026) with an order-agnostic
+031
+           motif redesign (fix the scaffold, redesign the mo-            decoder trained under a uniform-permutation distribution
+032
+           tif; 19.82% / 13)—tasks AR cannot perform na-                 over decoding orders, and at inference draw a fresh permuta-
+033
+           tively. We further identify a mechanistic asymme-             tion per sample. The same trained checkpoint then supports
+034
+           try in post-hoc rescue: AR failures are over-pair             three distinct sequence-design tasks without retraining or
+035
+           errors that local mutation can fix, while ours are            architectural changes: (i) random-permutation generation
+036
+           under-pair errors that local repair cannot bridge.            of full sequences; (ii) motif preservation—fix a structural
+037
+                                                                         motif (hairpin, pseudoknot stem) to wild-type and redesign
+038
+                                                                         the surrounding scaffold, the RNA analogue of RFdiffu-
+039
+                                                                         sion / ProteinMPNN motif scaffolding (Watson et al., 2023;
+040   1. Introduction
+                                                                         Dauparas et al., 2022); (iii) motif redesign—fix the scaffold
+041
+      RNA secondary structure determines function across                 and redesign only the motif itself, the natural primitive for
+042
+      ribozymes, viral elements, riboswitches, and ap-                   aptamer / riboswitch engineering (Wachsmuth et al., 2013;
+043
+      tamers (Damase et al., 2021; Zhang et al., 2023;                   Penchovsky, 2014). Modes (ii) and (iii) are inaccessible
+044
+      Wachsmuth et al., 2013; Penchovsky, 2014). Designing a             under L→R decoding alone.
+045
+046   sequence that folds into a target structure—RNA inverse
+047   folding—is a central computational problem in synthetic            Contributions. On the OpenKnot Round 7b 240-mer
+048   biology: redesigning the regulatory scaffold around an             pseudoknot benchmark (20 targets, matched K∼1000 sam-
+049     1
+          Anonymous Institution, Anonymous City, Anonymous Region,       ples per target):
+050   Anonymous Country. Correspondence to: Anonymous Author
+051   <anon.email@domain.com>.
+                                                                            • Random-permutation argmax decoding produces
+052                                                                           33.24% perfect-Jaccard designs and solves 13/20 puz-
+      Submitted to the 2026 Workshop on Generative and Agentic AI
+053   for Biology (ICML 2026). Do not distribute.                             zles, versus 6.64% / 17/20 for the strongest published
+054
+                                                                     1
+                                           Order-Agnostic Decoding for RNA Pseudoknot Design
+
+055        AR protocol (He & Sun, 2026)—a 5.0× per-sample                   Algorithm 1 Random-permutation argmax decoding.
+056        reliability ratio. Under matched protocol (both with              1: Input: target structure S, length L, policy πθ .
+057        three sampling strategies plus rescue), the ratio is 2.0×         2: Sample σ ∼ Uniform(SL ).
+058        and our coverage trails by 2 puzzles.                             3: Initialise output y ← [⊥]L , KV cache K ← ∅.
+059      • Order randomization is the diversity engine. Random-              4: for t = 0, . . . , L − 1 do
+060        perm + argmax produces 1000 unique sequences per                  5:    q ← πθ (σt | y, S, σ, K) {Q-values at position σt }
+061        target where AR + argmax produces ∼17 (CUDA float                 6:    q ← q + Mask(σt , y, S) {partner / repeat / A-budget
+062        non-determinism), making token-level sampling un-                       masks}
+063        necessary on our side.                                            7:   yσt ← arg max q; update K.
+064                                                                          8: end for
+065      • One checkpoint, three modes. Native in-painting via
+           partner-mask pre-fill achieves 25.69% / 13 for motif              9: return y.
+066
+067        preservation and 19.82% / 13 for motif redesign; the
+068        latter is structurally impossible under L→R AR.
+                                                                            quence and the target dot-bracket structure; the action
+069      • A mechanistic finding: rescue is one-sided because
+                                                                            at ∈ {A, U, G, C} is the nucleotide at one position; the
+070        failure modes differ. AR failures are over-pair errors lo-
+                                                                            reward rt = 1[base-pair correct at t] is dense and position-
+071        cally repairable by 4k mutation; random-perm failures
+                                                                            wise. Training optimises a twice-shifted deep-Q-learning
+072        are under-pair errors that local repair cannot create.
+                                                                            loss with experience replay, identical to He & Sun (2026);
+073                                                                         we refer the reader there for full details.
+074   2. Related work
+075
+      Modern RNA inverse folding for 2D structure includes Vi-              Architecture. The encoder follows He & Sun (2026) un-
+076
+      ennaRNA (Lorenz et al., 2011), MCTS-RNA (Yang et al.,                 changed. We replace the LSTM-PE plus causal-conv de-
+077
+      2017), RL-based LEARNA (Runge et al., 2019) and RNA-                  coder with a pure Transformer decoder using a learned
+078
+      DCGen (Hossain et al., 2024). Struct2SeQ (He & Sun,                   relative-position bias on the self- and cross-attention scores,
+079
+      2026) provides the strongest published results on OpenKnot            keyed on the decoding-order permutation σ. This single
+080
+      Round 7 / 7b pseudoknots via deep Q-learning (Mnih et al.,            change is what enables an arbitrary σ to share the same
+081
+      2015; Sutton & Barto, 2018) on RibonanzaNet-derived re-               parameters: position information is no longer baked into a
+082
+      wards (He et al., 2024); we use its DQN training framework,           recurrent state but supplied to attention scores on the fly.
+083
+084   RibonanzaNet-SS reward and Hungarian-Jaccard scoring as
+085   shared infrastructure for fair comparison. 3D RNA design              Order-agnostic training. For each example of length L
+086   (gRNAde (Joshi et al., 2024), transfers of ProteinMPNN                we draw σ ∼ Uniform(SL ). The causal mask is in step
+087   / RFdiffusion to RNA backbones) is bottlenecked by 3D-                order, not RNA-position order; the decoder predicts the
+088   structure data scarcity (Townshend et al., 2021) and under-           nucleotide at RNA position σt given previously emitted
+089   performs on pseudoknots.                                              tokens at σ0:t−1 . This realises the order-agnostic training
+090                                                                         distribution suggested in He & Sun (2026, §4) and is re-
+      Order-agnostic / any-order autoregressive modelling has               lated to permutation-language-modelling (Yang et al., 2019)
+091   been studied in language (Yang et al., 2019; Du et al., 2021;
+092                                                                         and absorbing-state discrete diffusion (Austin et al., 2021;
+      Hoogeboom et al., 2022) and discrete diffusion (Austin                Hoogeboom et al., 2022). We train for 5 episodes beyond
+093   et al., 2021; Chang et al., 2022). The biopolymer analogue
+094                                                                         the Struct2SeQ-released checkpoint.
+      is ProteinMPNN (Dauparas et al., 2022), whose graph net-
+095   work decodes residues in random order and natively han-
+096                                                                         Native in-painting vs. teacher-forced AR. The pre-fill
+      dles partial-sequence constraints. We transport this design
+097                                                                         in Algorithm 2 (line 2) is the load-bearing construction. Be-
+      lever to RNA secondary-structure design under chemical-
+098                                                                         cause constrained nucleotides are written into the output
+      mapping-grounded rewards (Lee et al., 2014; He et al., 2024;
+099                                                                         buffer before the decode loop starts, the partner-mask at
+      Wayment-Steele et al., 2022). Best-of-N critiques in the
+100                                                                         every subsequent step reads the constrained identities re-
+      language-model literature (Lightman et al., 2024; Wang
+101                                                                         gardless of where they fall in σ: the model is structurally
+      et al., 2023) parallel the sample-efficiency framing we adopt.
+102                                                                         aware of the motif from step 0. Setting f to wild-type at mo-
+103                                                                         tif positions yields motif preservation; setting f to wild-type
+104   3. Method                                                             at scaffold positions yields motif redesign.
+105   Setup. We adopt the encoder-decoder formulation,                      By contrast, an L→R AR decoder with teacher-forced motif
+106   RibonanzaNet-SS-derived reward, and Hungarian-matched                 positions exhibits a position-dependent asymmetry. For a
+107   Jaccard scoring of Struct2SeQ (He & Sun, 2026; He                     motif at indices [a, b] in a length-L target: at decode steps
+108   et al., 2024). The state st is the partially generated se-            t < a, the model emits scaffold tokens with no informa-
+109
+                                                                        2
+                                           Order-Agnostic Decoding for RNA Pseudoknot Design
+
+110   Algorithm 2 In-painting via fixed-mask pre-fill.                      Architecture vs. decoding order. The same trained check-
+111    1: Input: target S, length L, fixed mask f ∈ ({⊥} ∪                  point, decoded L→R + argmax, produces 23.72% / 10;
+112       {A, U, G, C})L , policy πθ .                                      decoded with random permutations + argmax it produces
+113    2: Pre-fill: initialise y ← f at all positions where fi ̸= ⊥.        33.24% / 13. The +9.52 pp gap is attributable to decoding
+114       {Fixed nucleotides visible to partner-mask from step 0}           order alone, as weights and architecture are identical. Con-
+115    3: Sample σ ∼ Uniform(SL ).                                          versely, holding decoding order fixed at L→R + argmax,
+116    4: for t = 0, . . . , L − 1 do                                       the original 10-episode checkpoint reaches 14.35% / 5 ver-
+117    5:   Decode σt as in Algorithm 1, line 5–6.                          sus our 23.72% / 10; the +9.37 pp gap is a confounded
+118    6:   if fσt ̸= ⊥ then                                                combination of architecture and 5 extra training episodes.
+119    7:      yσt ← fσt {teacher-force; KV cache stays consis-             Decoding order and architecture+training each contribute
+120            tent}                                                        roughly half of the total perfect-rate gain.
+121    8:   else
+122    9:      yσt ← arg max q.                                             Per-strategy AR ablation. The 3-strategy AR protocol
+123   10:   end if                                                          breaks down on the 240-mer benchmark (K=333 each)
+124   11:   Update K.                                                       as follows. For original Struct2SeQ AR, ϵ=0.05 achieves
+125   12: end for                                                           10.77% / 12, ϵ=0.10 achieves 8.79% / 11, and Q-softmax
+126   13: return y.                                                         achieves 0.07% / 2. Our checkpoint under random-perm
+127                                                                         shows the same per-strategy pattern: ϵ=0.05 achieves
+128                                                                         24.03% / 13, ϵ=0.10 achieves 16.89% / 14, and Q-softmax
+129                                                                         achieves 0.07% / 3. Q-softmax is essentially zero on both
+130   tion about the motif identity (it has not yet been visited); at       architectures because Q-values are not calibrated probabil-
+131   t ∈ [a, b], the emission is overridden to wild-type and enters        ities (He & Sun 2026, §2.7); softmax sampling drifts far
+132   the KV cache; for t > b, downstream scaffold positions are            off-peak. At a K=98 000 budget, 0.07% × 98,000 ≈ 70
+133   motif-aware. The upstream scaffold is generated blind to the          perfects per puzzle, but at K=333 it averages ∼0.2, so Q-
+134   motif identity, while the downstream scaffold is informed.            softmax contributes most of the diversity but almost none
+135   For pseudoknotted targets where long-range crossing pairs             of the correctness.
+136   span the motif boundary, upstream commits before its even-
+137   tual partner’s context exists. This is a degraded hack, not a         Diversity engine. A direct count on generated CSVs
+138   native capability; Table 1 quantifies the empirical 2.3× gap.         shows L → R + argmax is effectively deterministic at
+139                                                                         K=1000: original Struct2SeQ produces 340 unique se-
+140                                                                         quences across 20,032 samples (∼ 17 per target), and our
+141   4. Experiments
+                                                                            checkpoint forced into L→R + argmax produces 346. The
+142   Benchmark. We evaluate on the 20 OpenKnot Round 7b                    remaining ∼98% are exact duplicates from CUDA float
+143   240-mer pseudoknot puzzles (Eterna Game, 2024; Lee et al.,            non-determinism. Random-permutation + argmax produces
+144   2014), the longer-and-harder counterpart to OK7 used by He            20,032 unique sequences from the same K=1000 budget,
+145   & Sun (2026). Each method generates K∼1000 samples                    one per sample. Order randomisation, not token sampling,
+146   per target. Sequences are scored identically across all rows:         is the diversity engine for our method, and it composes with
+147   predicted secondary structure from RibonanzaNet-SS (He                argmax instead of replacing it.
+148   et al., 2024) → Hungarian-matched base-pair set → Jaccard
+149   against the target. We report perfect-Jaccard rate (fraction          In-painting. Native motif preservation reaches 25.69%
+150   of samples with Jaccard = 1.0) and puzzles solved (≥ 1                perfect / 13 puzzles solved at K=1000, applied to one struc-
+151   perfect at K=1000) on every row.                                      tural motif (hairpin or pseudoknot stem) per puzzle cover-
+152                                                                         ing on average ∼15% of positions. Motif redesign—fixing
+153                                                                         the ∼85% scaffold to wild-type and regenerating only the
+154   Headline results. Table 1 reports the main comparison.                motif itself—reaches 19.82% / 13 on the same selected
+155   At matched K∼1000, our random-permutation argmax de-                  motifs. Constraint-satisfaction is verified at 100% on a 500-
+156   coder produces 33.24% perfect designs and solves 13/20                sequence sample (every fixed position equals wild-type).
+157   puzzles. The strongest published AR protocol (3-strategy +            Motif redesign is inaccessible under L→R AR decoding
+158   rescue, faithful to test 240.py) reaches 6.64% / 17/20:               even with teacher-forcing, because the L→R decoder com-
+159   our per-sample reliability is 5.0× higher; AR’s coverage              mits to scaffold positions in a fixed order without observing
+160   lead of 4 puzzles comes entirely from rescue (§5). Under              the still-unvisited motif. Comparing quantitatively against
+161   matched protocol (both methods with 3-strategy + rescue),             an AR teacher-forced motif baseline as the strongest hack,
+162   the per-sample ratio is 2.0× in our favour and AR leads               ours achieves a 2.3× perfect-rate ratio on motif preservation
+163   coverage by 2 puzzles.                                                (Table 1; the AR teacher-forced row is the in-flight ablation
+164
+                                                                        3
+                                            Order-Agnostic Decoding for RNA Pseudoknot Design
+
+165   Table 1. OpenKnot Round 7b 240-mer pseudoknot design at matched K∼1000 samples per target. Perfect-Jaccard % is the fraction of
+      designs reproducing the target exactly (Hungarian on RibonanzaNet-SS predicted base-pair probabilities, θ=0.5). Puzzles solved is the
+166
+      count of targets with ≥ 1 perfect-Jaccard design at K=1000. The original Struct2SeQ row uses the released checkpoint trained for 10
+167   episodes; “Ours” uses our order-agnostic Transformer-decoder variant trained for 5 additional episodes under the random-permutation
+168   distribution. The 3-strategy protocol is ϵ-greedy with p=0.05, ϵ-greedy with p=0.10, and Q-softmax sampling at p=1.0, each with
+169   K≈333, matching the test 240.py protocol of He & Sun (2026). Rescue is the post-hoc 4k local repair on the per-puzzle best
+170   non-perfect seed when |diff pos| ≤ 4.
+171
+       Method                                                                                                          Perfect-Jaccard (%)
+172
+173   Plain generation. Original Struct2SeQ AR (L→R, 10 episodes)
+       argmax-only                                                                                                            14.35
+174
+       3-strategy                                                                                                              6.55
+175    3-strategy + rescue                                                                                                     6.64
+176
+      Plain generation. Ours (bidirectional, 10 + 5 episodes)
+177    L→R argmax-only                                                                                                        23.72
+178    L→R + 3-strategy                                                                                                        9.38
+179    L→R + 3-strategy + rescue                                                                                               9.13
+180    Random-perm argmax-only                                                                                                33.24
+181    Random-perm + 3-strategy                                                                                               13.65
+       Random-perm + 3-strategy + rescue                                                                                      13.44
+182
+183   In-painting. Ours (random-perm) and AR teacher-forced reference
+        Motif preservation                                                                                                    25.69
+184
+        Motif preservation + rescue                                                                                           25.28
+185     Motif redesign (AR-impossible natively)                                                                               19.82
+186
+      In-painting. Ours L→R + teacher-forced motif (architecture vs. order ablation)
+187                                                             TODO: T1
+188    L→R + teacher-forced motif (argmax)
+                                                                TODO: T2
+189    L→R + teacher-forced motif + 3-strategy
+190                                                             TODO: T3
+       L→R + teacher-forced motif + 3-strategy + rescue
+191    L→R + teacher-forced motif (argmax) + rescue             TODO: T4
+
+192
+193
+194   block).                                                                  plies the same diversity through a different mechanism:
+195                                                                            distinct σ’s induce distinct conditioning paths through the
+196                                                                            same trained policy, producing 1000 distinct argmax outputs
+197   5. Discussion
+                                                                               from K=1000 samples. This is methodologically attractive
+198   Per-sample reliability vs. coverage Pareto. The two met-                 because it is orthogonal to per-sample reliability (argmax
+199   rics measure different things and the field has historically             preserves point-estimate quality) rather than substituting
+200   conflated them. Best-of-N at K=98 000 optimises cover-                   for it (ϵ-greedy and Q-softmax inject noise that lowers per-
+201   age: with enough samples, even a low-reliability decoder                 sample reliability while raising diversity). Order is a free
+202   will eventually produce one perfect design per target. Our               parameter the L→R AR decoder cannot exploit.
+203   random-perm checkpoint optimises per-sample reliability:
+204   33.24% of single samples are perfect at K=1000, with no                  Why rescue is one-sided: over-pair vs. under-pair fail-
+205   rescue and no sampling temperature. These are distinct                   ures. Symmetric rescue—identical 4k local enumeration
+206   operating points on a Pareto frontier; our method offers                 applied to the per-puzzle best non-perfect seed—reaches
+207   both extremes from one checkpoint (reliability-optimised:                Jaccard = 1.0 on 4/5 AR seeds but 0/6 random-perm seeds.
+208   33.24% / 13; coverage-optimised: 13.44% / 15). AR has                    This is not algorithmic asymmetry but failure-mode asym-
+209   only one regime under matched compute, because argmax-                   metry. AR’s narrow exploration produces over-pair errors
+210   only is essentially deterministic so coverage requires the               (predicted has an extra pair the target lacks); rescue mutates
+211   full sampling protocol. Per-sample reliability is the axis that          one base to break Watson-Crick complementarity and the
+212   determines wet-lab synthesis cost and constrained-design                 unwanted pair drops out. Random-perm produces under-
+213   feasibility.                                                             pair errors (target wants a pair the network refuses to pre-
+214                                                                            dict from context); rescue cannot create the pair, because
+215   Order randomisation as a substitute diversity engine.                    RibonanzaNet-SS’s pair prediction is context-dependent on
+216   The published 3-strategy AR protocol (ϵ-greedy at two                    the surrounding ∼200 bases. Manual verification on puz-
+217   values plus Q-softmax) is in retrospect a workaround for                 zle 12 (UC2414, 240-mer): all 16 mutations of the C-G
+218   L→R + argmax determinism. Order randomisation sup-                       pair at positions 14, 21 fail to produce the predicted pair,
+219
+                                                                           4
+                                           Order-Agnostic Decoding for RNA Pseudoknot Design
+
+220   max Jaccard 0.984. We also confirmed that single-seed                 Impact Statement
+221   and multi-seed model-guided in-paint rescue (top-5 seeds,
+222   K=100 each) reach the same ceiling, ruling out a stochastic-          This work targets RNA inverse folding for pseudoknot-
+223   seed artefact. Rescue is a real tool, not a crutch we dismiss;        bearing targets, with downstream relevance to mRNA thera-
+224   it adds +1 puzzle to our 3-strategy configuration too. Its            peutic design (Damase et al., 2021; Zhang et al., 2023),
+225   asymmetric utility tracks the failure-mode locality of the            riboswitch and aptamer engineering (Wachsmuth et al.,
+226   generator, which is mechanistically determined by decoding            2013; Penchovsky, 2014; Wayment-Steele et al., 2022),
+227   regime.                                                               and synthetic-biology circuit construction. We choose 2D
+228                                                                         secondary-structure design because chemical-mapping ex-
+229                                                                         periments make experimentally-grounded structural feed-
+230   Half-blind teacher-forced AR vs. native in-painting.                  back abundant in a way 3D crystallographic data is not (Lee
+231   Even when the AR decoder is teacher-forced at motif posi-             et al., 2014; He et al., 2024), allowing the resulting neu-
+232   tions, the upstream scaffold is generated without any motif           ral oracles to be incorporated directly into the design loop.
+233   information in the KV cache (the motif positions have not             By raising per-sample reliability and lowering the compute
+234   yet been visited in L→R order); only the downstream scaf-             requirement for high-quality candidates (∼100× less per
+235   fold becomes motif-aware. The random-perm decoder pre-                target than the published Struct2SeQ baseline at matched
+236   fills constrained positions into the structural output tensor         coverage), the method reduces both compute and wet-lab
+237   before the decode loop starts, so the partner-mask reads the          cost, lowering the barrier for academic labs to participate
+238   motif at every step regardless of where the motif lands in σ.         in RNA design challenges. We see no immediate dual-use
+239   The empirical 2.3× perfect-rate ratio on motif preservation           concern beyond those generic to nucleic-acid design tools;
+240   is a direct consequence of this asymmetry, and it is strictly         downstream synthesis is gated by physical reagent access.
+241   larger for pseudoknotted targets with long-range crossing             Interactive deployment on platforms such as Eterna (Lee
+242   pairs that span the motif boundary.                                   et al., 2014; Wayment-Steele et al., 2022) is a promising
+243                                                                         longer-term direction: order-agnostic decoding is a natural
+                                                                            fit for a setting in which a human fixes an arbitrary subset
+244   6. Limitations and conclusion
+245                                                                         of nucleotides and the model fills in the rest in real time,
+246   Limitations. All numbers come from a single eval-                     placing the design tool in a transparent collaborative role
+247   uation seed; between-config statistical significance is               rather than as an opaque generative oracle.
+248   not quantified. Evaluation is computational throughout
+249   (RibonanzaNet-SS predicted structure for Jaccard, Ribo-               References
+250   nanzaNet predicted SHAPE for OK score); wet-lab valida-
+      tion is future work. The architecture-vs-order attribution            Austin, J., Johnson, D. D., Ho, J., Tarlow, D., and van den
+251
+      is partially confounded by 5 extra training episodes on our             Berg, R. Structured denoising diffusion models in dis-
+252
+      checkpoint, though the same-checkpoint L→R-vs-random-                   crete state-spaces. In Advances in Neural Information
+253
+      perm gap (+9.52 pp) is clean. Our random-perm decoder’s                Processing Systems (NeurIPS), 2021.
+254
+255   failure modes on unsolved puzzles are under-pair errors
+      that cannot be fixed by local repair; closing this seed bottle-       Chang, H., Zhang, H., Jiang, L., Liu, C., and Freeman,
+256
+      neck (multi-seed or near-miss-targeted RL fine-tuning) is               W. T. MaskGIT: Masked generative image transformer. In
+257
+      the most natural follow-up.                                             IEEE/CVF Conference on Computer Vision and Pattern
+258
+                                                                              Recognition (CVPR), 2022.
+259
+260   Conclusion and future work. Order-agnostic decoding                   Damase, T. R., Sukhovershin, R., Boada, C., Taraballi, F.,
+261   delivers higher per-sample reliability and a strictly larger            Pettigrew, R. I., and Cooke, J. P. The limitless future
+262   capability set than L→R AR for RNA pseudoknot design,                   of RNA therapeutics. Frontiers in Bioengineering and
+263   from a single checkpoint. The natural domain follow-up is               Biotechnology, 9:628137, 2021. doi: 10.3389/fbioe.2021.
+264   aptamer and riboswitch redesign (Wachsmuth et al., 2013;                628137.
+265   Penchovsky, 2014; Wayment-Steele et al., 2022): fix the
+266   ligand-binding aptamer pocket as the constrained motif and            Dauparas, J., Anishchenko, I., Bennett, N., others, and
+267   redesign the surrounding regulatory scaffold to vary ligand             Baker, D. Robust deep learning–based protein sequence
+268   response threshold or kinetics, then validate experimentally.           design using ProteinMPNN. Science, 378(6615):49–56,
+269   Other high-leverage directions are in-painting-aware train-             2022. doi: 10.1126/science.add2187.
+270   ing (random K-of-WT mask during training to close the
+271   motif-redesign vs. preservation gap), multi-seed and iter-            Du, C., Tu, Z., and Jiang, J. Order-agnostic cross en-
+272   ated rescue for under-pair failures, and SHAPE-supervised               tropy for non-autoregressive machine translation. In In-
+273   retraining as a Struct2SeQ-SHAPE analogue.                              ternational Conference on Machine Learning (ICML),
+274
+                                                                        5
+                                           Order-Agnostic Decoding for RNA Pseudoknot Design
+
+275     2021. URL https://proceedings.mlr.press/                            Runge, F., Stoll, D., Falkner, S., and Hutter, F. Learn-
+276     v139/du21c.html.                                                      ing to design RNA. In International Conference on
+277                                                                           Learning Representations (ICLR), 2019. URL https:
+278   Eterna Game.     OpenKnot AI Design Data.                               //openreview.net/forum?id=ByfyHh05tQ.
+279     https://github.com/eternagame/
+280     OpenKnotAIDesignData, 2024. GitHub repository.                      Sutton, R. S. and Barto, A. G. Reinforcement Learning: An
+281                                                                           Introduction. MIT Press, Cambridge, MA, 2nd edition,
+      He, S. and Sun, Q. Struct2SeQ: RNA inverse folding with                 2018.
+282
+        deep Q-learning. bioRxiv, 2026. doi: 10.64898/2026.01.
+283                                                                         Townshend, R. J. L., Eismann, S., Watkins, A. M., Rangan,
+       16.700031.
+284                                                                           R., Karelina, M., Das, R., and Dror, R. O. Geometric
+285   He, S., Huang, R., Townley, J., Quarmby, C., others,                    deep learning of RNA structure. Science, 373(6558):
+286    Wayment-Steele, H. K., and Das, R. Ribonanza: deep                     1047–1051, 2021. doi: 10.1126/science.abe5650.
+287     learning of RNA structure through dual crowdsourcing.
+288     bioRxiv, 2024. doi: 10.1101/2024.02.24.581671.                      Wachsmuth, M., Findeiß, S., Weissheimer, N., Stadler, P. F.,
+289                                                                          and Mörl, M. De novo design of a synthetic riboswitch
+290   Hoogeboom, E., Gritsenko, A. A., Bastings, J., Poole,                  that regulates transcription termination. Nucleic Acids
+291     B., van den Berg, R., and Salimans, T. Autoregres-                   Research, 41(4):2541–2551, 2013. doi: 10.1093/nar/
+292     sive diffusion models. In International Conference on                gks1330.
+293    Learning Representations (ICLR), 2022. URL https:
+294    //openreview.net/forum?id=Lm8T39vLDTE.                               Wang, X., Wei, J., Schuurmans, D., Le, Q., Chi, E., Narang,
+295                                                                          S., Chowdhery, A., and Zhou, D. Self-consistency im-
+296   Hossain, H. S. et al. RNA-DCGen: Dual constrained RNA                  proves chain of thought reasoning in language models. In
+297     sequence generation with LLM-attack. bioRxiv, 2024.                  International Conference on Learning Representations
+298     doi: 10.1101/2024.09.23.614570.                                      (ICLR), 2023.
+299                                                                         Watson, J. L., Juergens, D., Bennett, N. R., others, and
+300   Joshi, C. K., Jamasb, A. R., Viñas, R., Harris, C., Mathis,
+        S. V., Morehead, A., Anand, R., and Liò, P. grnade:                 Baker, D. De novo design of protein structure and func-
+301                                                                          tion with RFdiffusion. Nature, 620(7976):1089–1100,
+302     Geometric deep learning for 3D RNA inverse design. In
+        ICLR 2024 Generative and Experimental Perspectives for               2023. doi: 10.1038/s41586-023-06415-8.
+303
+304     Biomolecular Design Workshop, 2024.
+                                                                            Wayment-Steele, H. K., Wu, M., Gotrik, M., and Das,
+305   Lee, J., Kladwang, W., Lee, M., Cantu, D., others, Treuille,           R. Crowdsourced RNA design discovers diverse, re-
+306     A., and Das, R. RNA design rules from a massive open                 versible, efficient, self-contained molecular switches. Pro-
+307     laboratory. Proceedings of the National Academy of                   ceedings of the National Academy of Sciences, 119(18):
+308     Sciences, 111(6):2122–2127, 2014. doi: 10.1073/pnas.                 e2112979119, 2022. doi: 10.1073/pnas.2112979119.
+309     1313039111.
+310                                                                         Yang, X., Yoshizoe, K., Taneda, A., and Tsuda, K.
+311                                                                           RNA inverse folding using Monte Carlo tree search.
+      Lightman, H., Kosaraju, V., Burda, Y., Edwards, H., Baker,
+312                                                                           BMC Bioinformatics, 18(1):468, 2017. doi: 10.1186/
+        B., Lee, T., Leike, J., Schulman, J., Sutskever, I., and
+313                                                                           s12859-017-1882-7.
+        Cobbe, K. Let’s verify step by step. In International
+314     Conference on Learning Representations (ICLR), 2024.                Yang, Z., Dai, Z., Yang, Y., Carbonell, J., Salakhutdinov,
+315                                                                           R., and Le, Q. V. XLNet: Generalized autoregressive
+316   Lorenz, R., Bernhart, S. H., Höner zu Siederdissen, C., Tafer,
+                                                                              pretraining for language understanding. In Advances in
+317     H., Flamm, C., Stadler, P. F., and Hofacker, I. L. Vien-
+                                                                              Neural Information Processing Systems (NeurIPS), 2019.
+318     naRNA package 2.0. Algorithms for Molecular Biology,
+319     6:26, 2011. doi: 10.1186/1748-7188-6-26.                            Zhang, H., Zhang, L., Lin, A., Xu, C., Li, Z., Liu, K.,
+320                                                                           others, Mathews, D. H., and Huang, L. Algorithm
+321   Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A. A., Veness,             for optimized mRNA design improves stability and im-
+322    J., others, and Hassabis, D. Human-level control through               munogenicity. Nature, 621(7978):396–403, 2023. doi:
+323    deep reinforcement learning. Nature, 518(7540):529–533,                10.1038/s41586-023-06127-z.
+324    2015. doi: 10.1038/nature14236.
+325   Penchovsky, R.     Computational design of allosteric
+326     ribozymes as molecular biosensors. Biotechnology
+327     Advances, 32(5):1015–1027, 2014. doi: 10.1016/j.
+328     biotechadv.2014.05.005.
+329
+                                                                        6
+

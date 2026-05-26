@@ -1,0 +1,14 @@
+tag,label,group,n_samples,n_unique_seqs,perfect_pct,puzzles_solved,n_puzzles,mean_jaccard,mean_ok_score,status
+orig_struct2seq_l2r,AR L→R argmax-only,AR_baseline,20096,394,21.17,15,20,0.8856,81.77,ok
+bidir_random,Ours: bidir_random argmax-only (K=1000),ours,20096,20096,45.51,19,20,0.8999,82.63,ok
+bidir_motifs_structural,Ours: bidir + structural motif-preservation in-painting,ours_inpaint,20096,20096,37.91,19,20,0.8953,82.17,ok
+bidir_motifs_redesign_fixedfirst,Ours: motif-redesign + fixed-first decoding,ours_inpaint,20096,8044,20.34,12,20,0.8388,80.12,ok
+bidir_motifs_redesign,"Ours: bidir + motif-redesign (Framing B, fix scaffold)",ours_inpaint,20096,10966,19.78,13,20,0.8338,80.07,ok
+bidir_inpaint_K00,Ours: bidir + scatter-inpaint K=0% (sanity),ours_inpaint_kscan,20096,20096,45.51,19,20,0.8999,82.63,ok
+bidir_inpaint_K95,Ours: bidir + scatter-inpaint K=95% (rescue regime),ours_inpaint_kscan,20096,5666,31.72,14,20,0.8579,80.28,ok
+bidir_inpaint_K25,Ours: bidir + scatter-inpaint K=25%,ours_inpaint_kscan,20096,20096,27.71,18,20,0.8738,82.21,ok
+bidir_inpaint_K75,Ours: bidir + scatter-inpaint K=75%,ours_inpaint_kscan,20096,19717,18.51,17,20,0.8445,81.52,ok
+bidir_inpaint_K50,Ours: bidir + scatter-inpaint K=50%,ours_inpaint_kscan,20096,20095,18.28,19,20,0.8532,82.07,ok
+bidir_paired_first,Ours: bidir + paired-first decode order,ours_ablation,20096,20096,39.82,18,20,0.8881,83.57,ok
+bidir_identity,"Ours: bidir_identity (L→R from same checkpoint, argmax)",ours_ablation,20096,351,32.84,14,20,0.8146,78.41,ok
+orig_struct2seq_motifs_structural,(uncategorized) orig_struct2seq_motifs_structural,uncategorized,20096,1366,33.42,19,20,0.8949,82.91,ok

@@ -1,0 +1,208 @@
+\begin{thebibliography}{26}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Austin et~al.(2021)Austin, Johnson, Ho, Tarlow, and van~den
+  Berg]{austin2021d3pm}
+Austin, J., Johnson, D.~D., Ho, J., Tarlow, D., and van~den Berg, R.
+\newblock Structured denoising diffusion models in discrete state-spaces.
+\newblock In \emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}, 2021.
+
+\bibitem[Chang et~al.(2022)Chang, Zhang, Jiang, Liu, and
+  Freeman]{chang2022maskgit}
+Chang, H., Zhang, H., Jiang, L., Liu, C., and Freeman, W.~T.
+\newblock {MaskGIT}: Masked generative image transformer.
+\newblock In \emph{IEEE/CVF Conference on Computer Vision and Pattern
+  Recognition (CVPR)}, 2022.
+
+\bibitem[Damase et~al.(2021)Damase, Sukhovershin, Boada, Taraballi, Pettigrew,
+  and Cooke]{damase2021limitless}
+Damase, T.~R., Sukhovershin, R., Boada, C., Taraballi, F., Pettigrew, R.~I.,
+  and Cooke, J.~P.
+\newblock The limitless future of {RNA} therapeutics.
+\newblock \emph{Frontiers in Bioengineering and Biotechnology}, 9:\penalty0
+  628137, 2021.
+\newblock \doi{10.3389/fbioe.2021.628137}.
+
+\bibitem[Dauparas et~al.(2022)Dauparas, Anishchenko, Bennett, others, and
+  Baker]{dauparas2022proteinmpnn}
+Dauparas, J., Anishchenko, I., Bennett, N., others, and Baker, D.
+\newblock Robust deep learning--based protein sequence design using
+  {ProteinMPNN}.
+\newblock \emph{Science}, 378\penalty0 (6615):\penalty0 49--56, 2022.
+\newblock \doi{10.1126/science.add2187}.
+
+\bibitem[Du et~al.(2021)Du, Tu, and Jiang]{du2021oaxe}
+Du, C., Tu, Z., and Jiang, J.
+\newblock Order-agnostic cross entropy for non-autoregressive machine
+  translation.
+\newblock In \emph{International Conference on Machine Learning (ICML)}, 2021.
+\newblock URL \url{https://proceedings.mlr.press/v139/du21c.html}.
+
+\bibitem[{Eterna Game}(2024)]{openknotaidesigndata}
+{Eterna Game}.
+\newblock {OpenKnot AI Design Data}.
+\newblock \url{https://github.com/eternagame/OpenKnotAIDesignData}, 2024.
+\newblock GitHub repository.
+
+\bibitem[He \& Sun(2026)He and Sun]{he2026struct2seq}
+He, S. and Sun, Q.
+\newblock {Struct2SeQ}: {RNA} inverse folding with deep {Q}-learning.
+\newblock \emph{bioRxiv}, 2026.
+\newblock \doi{10.64898/2026.01.16.700031}.
+
+\bibitem[He et~al.(2024)He, Huang, Townley, Quarmby, others, Wayment-Steele,
+  and Das]{he2024ribonanza}
+He, S., Huang, R., Townley, J., Quarmby, C., others, Wayment-Steele, H.~K., and
+  Das, R.
+\newblock Ribonanza: deep learning of {RNA} structure through dual
+  crowdsourcing.
+\newblock \emph{bioRxiv}, 2024.
+\newblock \doi{10.1101/2024.02.24.581671}.
+
+\bibitem[Hoogeboom et~al.(2022)Hoogeboom, Gritsenko, Bastings, Poole, van~den
+  Berg, and Salimans]{hoogeboom2022ardm}
+Hoogeboom, E., Gritsenko, A.~A., Bastings, J., Poole, B., van~den Berg, R., and
+  Salimans, T.
+\newblock Autoregressive diffusion models.
+\newblock In \emph{International Conference on Learning Representations
+  (ICLR)}, 2022.
+\newblock URL \url{https://openreview.net/forum?id=Lm8T39vLDTE}.
+
+\bibitem[Hossain et~al.(2024)]{rnadcgen2024}
+Hossain, H.~S. et~al.
+\newblock {RNA-DCGen}: Dual constrained {RNA} sequence generation with
+  {LLM}-attack.
+\newblock \emph{bioRxiv}, 2024.
+\newblock \doi{10.1101/2024.09.23.614570}.
+
+\bibitem[Joshi et~al.(2024)Joshi, Jamasb, Vi{\~n}as, Harris, Mathis, Morehead,
+  Anand, and Li{\`o}]{joshi2024grnade}
+Joshi, C.~K., Jamasb, A.~R., Vi{\~n}as, R., Harris, C., Mathis, S.~V.,
+  Morehead, A., Anand, R., and Li{\`o}, P.
+\newblock grnade: Geometric deep learning for {3D RNA} inverse design.
+\newblock In \emph{ICLR 2024 Generative and Experimental Perspectives for
+  Biomolecular Design Workshop}, 2024.
+
+\bibitem[Lee et~al.(2014)Lee, Kladwang, Lee, Cantu, others, Treuille, and
+  Das]{lee2014eterna}
+Lee, J., Kladwang, W., Lee, M., Cantu, D., others, Treuille, A., and Das, R.
+\newblock {RNA} design rules from a massive open laboratory.
+\newblock \emph{Proceedings of the National Academy of Sciences}, 111\penalty0
+  (6):\penalty0 2122--2127, 2014.
+\newblock \doi{10.1073/pnas.1313039111}.
+
+\bibitem[Lightman et~al.(2024)Lightman, Kosaraju, Burda, Edwards, Baker, Lee,
+  Leike, Schulman, Sutskever, and Cobbe]{lightman2024verify}
+Lightman, H., Kosaraju, V., Burda, Y., Edwards, H., Baker, B., Lee, T., Leike,
+  J., Schulman, J., Sutskever, I., and Cobbe, K.
+\newblock Let's verify step by step.
+\newblock In \emph{International Conference on Learning Representations
+  (ICLR)}, 2024.
+
+\bibitem[Lorenz et~al.(2011)Lorenz, Bernhart, H{\"o}ner~zu Siederdissen, Tafer,
+  Flamm, Stadler, and Hofacker]{lorenz2011viennarna}
+Lorenz, R., Bernhart, S.~H., H{\"o}ner~zu Siederdissen, C., Tafer, H., Flamm,
+  C., Stadler, P.~F., and Hofacker, I.~L.
+\newblock {ViennaRNA} package 2.0.
+\newblock \emph{Algorithms for Molecular Biology}, 6:\penalty0 26, 2011.
+\newblock \doi{10.1186/1748-7188-6-26}.
+
+\bibitem[Mnih et~al.(2015)Mnih, Kavukcuoglu, Silver, Rusu, Veness, others, and
+  Hassabis]{mnih2015dqn}
+Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A.~A., Veness, J., others, and
+  Hassabis, D.
+\newblock Human-level control through deep reinforcement learning.
+\newblock \emph{Nature}, 518\penalty0 (7540):\penalty0 529--533, 2015.
+\newblock \doi{10.1038/nature14236}.
+
+\bibitem[Penchovsky(2014)]{penchovsky2014review}
+Penchovsky, R.
+\newblock Computational design of allosteric ribozymes as molecular biosensors.
+\newblock \emph{Biotechnology Advances}, 32\penalty0 (5):\penalty0 1015--1027,
+  2014.
+\newblock \doi{10.1016/j.biotechadv.2014.05.005}.
+
+\bibitem[Runge et~al.(2019)Runge, Stoll, Falkner, and Hutter]{runge2019learna}
+Runge, F., Stoll, D., Falkner, S., and Hutter, F.
+\newblock Learning to design {RNA}.
+\newblock In \emph{International Conference on Learning Representations
+  (ICLR)}, 2019.
+\newblock URL \url{https://openreview.net/forum?id=ByfyHh05tQ}.
+
+\bibitem[Sutton \& Barto(2018)Sutton and Barto]{sutton2018rl}
+Sutton, R.~S. and Barto, A.~G.
+\newblock \emph{Reinforcement Learning: An Introduction}.
+\newblock MIT Press, Cambridge, MA, 2nd edition, 2018.
+
+\bibitem[Townshend et~al.(2021)Townshend, Eismann, Watkins, Rangan, Karelina,
+  Das, and Dror]{townshend2021atomicnet}
+Townshend, R. J.~L., Eismann, S., Watkins, A.~M., Rangan, R., Karelina, M.,
+  Das, R., and Dror, R.~O.
+\newblock Geometric deep learning of {RNA} structure.
+\newblock \emph{Science}, 373\penalty0 (6558):\penalty0 1047--1051, 2021.
+\newblock \doi{10.1126/science.abe5650}.
+
+\bibitem[Wachsmuth et~al.(2013)Wachsmuth, Findei{\ss}, Weissheimer, Stadler,
+  and M{\"o}rl]{wachsmuth2013riboswitch}
+Wachsmuth, M., Findei{\ss}, S., Weissheimer, N., Stadler, P.~F., and M{\"o}rl,
+  M.
+\newblock De novo design of a synthetic riboswitch that regulates transcription
+  termination.
+\newblock \emph{Nucleic Acids Research}, 41\penalty0 (4):\penalty0 2541--2551,
+  2013.
+\newblock \doi{10.1093/nar/gks1330}.
+
+\bibitem[Wang et~al.(2023)Wang, Wei, Schuurmans, Le, Chi, Narang, Chowdhery,
+  and Zhou]{wang2023selfconsistency}
+Wang, X., Wei, J., Schuurmans, D., Le, Q., Chi, E., Narang, S., Chowdhery, A.,
+  and Zhou, D.
+\newblock Self-consistency improves chain of thought reasoning in language
+  models.
+\newblock In \emph{International Conference on Learning Representations
+  (ICLR)}, 2023.
+
+\bibitem[Watson et~al.(2023)Watson, Juergens, Bennett, others, and
+  Baker]{watson2023rfdiffusion}
+Watson, J.~L., Juergens, D., Bennett, N.~R., others, and Baker, D.
+\newblock De novo design of protein structure and function with {RF}diffusion.
+\newblock \emph{Nature}, 620\penalty0 (7976):\penalty0 1089--1100, 2023.
+\newblock \doi{10.1038/s41586-023-06415-8}.
+
+\bibitem[Wayment-Steele et~al.(2022)Wayment-Steele, Wu, Gotrik, and
+  Das]{waymentsteele2022switches}
+Wayment-Steele, H.~K., Wu, M., Gotrik, M., and Das, R.
+\newblock Crowdsourced {RNA} design discovers diverse, reversible, efficient,
+  self-contained molecular switches.
+\newblock \emph{Proceedings of the National Academy of Sciences}, 119\penalty0
+  (18):\penalty0 e2112979119, 2022.
+\newblock \doi{10.1073/pnas.2112979119}.
+
+\bibitem[Yang et~al.(2017)Yang, Yoshizoe, Taneda, and Tsuda]{yang2017mctsrna}
+Yang, X., Yoshizoe, K., Taneda, A., and Tsuda, K.
+\newblock {RNA} inverse folding using {Monte Carlo} tree search.
+\newblock \emph{BMC Bioinformatics}, 18\penalty0 (1):\penalty0 468, 2017.
+\newblock \doi{10.1186/s12859-017-1882-7}.
+
+\bibitem[Yang et~al.(2019)Yang, Dai, Yang, Carbonell, Salakhutdinov, and
+  Le]{yang2019xlnet}
+Yang, Z., Dai, Z., Yang, Y., Carbonell, J., Salakhutdinov, R., and Le, Q.~V.
+\newblock {XLNet}: Generalized autoregressive pretraining for language
+  understanding.
+\newblock In \emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}, 2019.
+
+\bibitem[Zhang et~al.(2023)Zhang, Zhang, Lin, Xu, Li, Liu, others, Mathews, and
+  Huang]{zhang2023lineardesign}
+Zhang, H., Zhang, L., Lin, A., Xu, C., Li, Z., Liu, K., others, Mathews, D.~H.,
+  and Huang, L.
+\newblock Algorithm for optimized {mRNA} design improves stability and
+  immunogenicity.
+\newblock \emph{Nature}, 621\penalty0 (7978):\penalty0 396--403, 2023.
+\newblock \doi{10.1038/s41586-023-06127-z}.
+
+\end{thebibliography}

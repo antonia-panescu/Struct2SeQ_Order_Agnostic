@@ -1,0 +1,18 @@
+[Mon May 25 10:46:38 UTC 2026] rescue original 3-strategy
+Traceback (most recent call last):
+  File "/home/nvidia/haiwen/antonia/struct2seq_bidir_rl/evaluation/run_rescue.py", line 253, in <module>
+    main()
+  File "/home/nvidia/haiwen/antonia/struct2seq_bidir_rl/evaluation/run_rescue.py", line 106, in main
+    in_df = pd.read_csv(args.in_samples)
+  File "/home/nvidia/miniconda3/envs/struct2seq/lib/python3.10/site-packages/pandas/io/parsers/readers.py", line 1026, in read_csv
+    return _read(filepath_or_buffer, kwds)
+  File "/home/nvidia/miniconda3/envs/struct2seq/lib/python3.10/site-packages/pandas/io/parsers/readers.py", line 620, in _read
+    parser = TextFileReader(filepath_or_buffer, **kwds)
+  File "/home/nvidia/miniconda3/envs/struct2seq/lib/python3.10/site-packages/pandas/io/parsers/readers.py", line 1620, in __init__
+    self._engine = self._make_engine(f, self.engine)
+  File "/home/nvidia/miniconda3/envs/struct2seq/lib/python3.10/site-packages/pandas/io/parsers/readers.py", line 1880, in _make_engine
+    self.handles = get_handle(
+  File "/home/nvidia/miniconda3/envs/struct2seq/lib/python3.10/site-packages/pandas/io/common.py", line 873, in get_handle
+    handle = open(
+FileNotFoundError: [Errno 2] No such file or directory: '/home/nvidia/haiwen/antonia/struct2seq_bidir_rl/results/eterna100_eval/orig_3strategies_k1000_v2/samples.csv'
+ERROR conda.cli.main_run:execute(142): `conda run python evaluation/run_rescue.py --in-samples /home/nvidia/haiwen/antonia/struct2seq_bidir_rl/results/eterna100_eval/orig_3strategies_k1000_v2/samples.csv --out-dir /home/nvidia/haiwen/antonia/struct2seq_bidir_rl/results/eterna100_eval/orig_3strategies_rescue_v2 --targets-csv /home/nvidia/haiwen/antonia/struct2seq_bidir_rl/data/eterna100/eterna100_targets_v2.csv --device cuda:0` failed. (See above for error)
