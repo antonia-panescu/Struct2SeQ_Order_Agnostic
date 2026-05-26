@@ -1,15 +1,16 @@
-# Checkpoints (each ~120 MB; too large for git)
+# --- Model checkpoints (each ~120 MB; too large for git) -------------------
 *.pt
-# Optimizer / scheduler state, mid-epoch resume files
 *.opt
 *.sched
 *.pkl
 
-# Training data and play-phase outputs
+# --- Training data and play-phase outputs ---------------------------------
 tmp/
 top2M.csv
+# Large Eterna training-dump CSVs (44+ MB)
+data/eterna_training_dump/eterna_puzzles_*.csv
 
-# Logs / metrics
+# --- Logs / metrics --------------------------------------------------------
 logs/
 stats/
 wandb/
@@ -18,35 +19,58 @@ run_*.txt
 slurm-*.out
 rewards_log.csv
 
-# Eval run outputs (per-run dirs are large; the script + lab_notebook
+# --- Eval run outputs (per-run dirs are large; the script + lab_notebook
 # already capture what we need, and the JSON summaries can be re-derived
-# from per_sample.csv anyway).
+# from per_sample.csv anyway). ---------------------------------------------
 evaluation/2026*__*/
 evaluation/MERGED__*/
 evaluation/_*.log
 evaluation/_done_so_far.csv
 evaluation/_launch_*.log
 
-# Python build / cache
+# --- LaTeX build artefacts (icml2026/ keeps .tex/.bib/.sty/.bst/.pdf) -----
+*.aux
+*.bbl
+*.blg
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.toc
+*.lof
+*.lot
+texput.log
+icml2026/paper.log
+icml2026/paper.out
+
+# --- Python build / cache --------------------------------------------------
 __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .ipynb_checkpoints/
+*.egg-info/
+build/
+dist/
 
-# Editor / IDE
+# --- Editor / IDE ----------------------------------------------------------
 .vscode/
 .idea/
 *.swp
+*.swo
 
-# Claude per-project state (settings only — keep settings.json out of repo
-# unless it's meant to be shared)
+# --- Claude per-project state ---------------------------------------------
 .claude/
 
-# Arnie config (path is per-machine)
+# --- Arnie config (path is per-machine) -----------------------------------
 arnie_file.txt
 
-# OS junk
+# --- Local environment / secrets ------------------------------------------
+.env
+.envrc
+
+# --- OS junk ---------------------------------------------------------------
 .DS_Store
 Thumbs.db
 results/
