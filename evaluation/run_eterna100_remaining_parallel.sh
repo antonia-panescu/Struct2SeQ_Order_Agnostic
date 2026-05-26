@@ -115,7 +115,7 @@ run_rescue_and_report() {
   conda run -p "$ENV_PREFIX" python evaluation/write_eterna100_report.py \
     --targets "$TARGETS" \
     --results-dir "$RESULTS" \
-    --out-md "$ROOT/knitnet_eterna100_results.md" \
+    --out-md "$ROOT/eterna100_results.md" \
     > "$LOGDIR/write_report_parallel.log" 2>&1
 }
 

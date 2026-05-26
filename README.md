@@ -60,6 +60,9 @@ Eterna100 + OpenKnot 7 benchmarks, paper figures for the 100-mer and
 ├── paper/                       # Writing prompts and idea notes
 ├── lab_notebook/                # Dated lab notes (kept for provenance)
 ├── ideas/                       # Reward design / contrastive notes
+├── archive/                     # Superseded scripts (see docs/history/)
+├── docs/                        # Long-form docs and history
+├── eterna100_results.md         # Auto-generated Eterna100 benchmark report
 └── tests/                       # CPU smoke tests (no GPU required)
 ```
 
@@ -71,7 +74,6 @@ DGX, plus assorted local boxes).
 ```bash
 git clone git@github.com:antonia-panescu/Struct2SeQ_bidir.git
 cd Struct2SeQ_bidir
-git checkout cleanup/collaborator-ready  # or main
 
 pip install -r requirements.txt
 pip install git+https://github.com/DasLab/arnie.git
@@ -82,11 +84,63 @@ python make_arnie_dummy.py        # writes ./arnie_file.txt
 export ARNIEFILE="$(pwd)/arnie_file.txt"
 ```
 
-The RibonanzaNet-SS weights are not checked in. The training/eval
-scripts expect them at `../weights/RibonanzaNet-SS.pt` (and
-`../weights/RibonanzaNet.pt`) relative to the project root — see
-`Env.py`. Download them from the RibonanzaNet release page and place
-them in a sibling `weights/` directory, or symlink your own.
+## Pretrained weights
+
+None of the model checkpoints or oracle weights are checked into git
+(each is 100–120 MB). Download them from Google Drive and place them
+as below.
+
+### RibonanzaNet oracle (required for training and eval)
+
+`Env.py` loads two RibonanzaNet checkpoints from a **sibling**
+`weights/` directory at `../weights/` relative to this repo:
+
+```
+<parent>/
+├── struct2seq_bidir_rl/        ← this repo
+└── weights/
+    ├── RibonanzaNet-SS.pt      ← used by finetuned_RibonanzaNet (oracle reward)
+    └── RibonanzaNet.pt         ← used for reactivity scoring
+```
+
+The original `RibonanzaNet*.pt` files are published by the DasLab
+RibonanzaNet release. If they live elsewhere on your machine, symlink:
+
+```bash
+mkdir -p ../weights
+ln -s /abs/path/to/RibonanzaNet-SS.pt ../weights/RibonanzaNet-SS.pt
+ln -s /abs/path/to/RibonanzaNet.pt    ../weights/RibonanzaNet.pt
+```
+
+### Struct2SeQ-bidir model checkpoints
+
+Place these at the **repo root** (next to `run.py`):
+
+| File                       | Size   | Purpose                                          |
+|----------------------------|--------|--------------------------------------------------|
+| `Struct2SeQ.pt`            | 119 MB | Original L→R baseline (paper comparison + init)  |
+| `best_policy_network.pt`   | 112 MB | Best test-reward checkpoint from our RL training |
+| `policy_network_{N}.pt`    | 112 MB | Per-episode checkpoints (optional, for resume)   |
+
+Google Drive (TODO — paste shared link here once uploaded):
+
+```
+RibonanzaNet weights:        <Google Drive link>
+Struct2SeQ.pt:               <Google Drive link>
+best_policy_network.pt:      <Google Drive link>
+policy_network_{N}.pt set:   <Google Drive link>
+```
+
+Quick fetch with `gdown` once links are available:
+
+```bash
+pip install gdown
+gdown --id <FILE_ID> -O ./Struct2SeQ.pt
+gdown --id <FILE_ID> -O ./best_policy_network.pt
+mkdir -p ../weights
+gdown --id <FILE_ID> -O ../weights/RibonanzaNet-SS.pt
+gdown --id <FILE_ID> -O ../weights/RibonanzaNet.pt
+```
 
 ## Data
 
@@ -181,8 +235,9 @@ pytest tests/ -q
   Refactoring into a `struct2seq/` package would be useful but is out
   of scope for this cleanup pass.
 - `arnie_file.txt` is generated per machine and is not committed.
-- The `Struct2SeQ.pt` baseline checkpoint and `RibonanzaNet*.pt`
-  weights are not in this repository — see *Installation*.
+- The `Struct2SeQ.pt` baseline checkpoint, our trained
+  `*_policy_network.pt` files, and `RibonanzaNet*.pt` weights are not
+  in this repository — see *Pretrained weights*.
 
 ## Reproducing the paper
 
