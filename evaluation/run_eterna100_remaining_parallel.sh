@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 # Run remaining Eterna100 protocols efficiently after bidir_random_k1000_v2 completes.
 # Uses only clean GPUs passed via GPUS_LIST (default: 5,6,7), one independent eval per GPU.
+#
+# Required env (same as run_eterna100_benchmark.sh):
+#   STRUCT2SEQ_ROOT, ORIG_S2S_ROOT, ORIG_S2S_CHECKPOINT, CONDA_SH, ENV_PREFIX
 
-ROOT=/home/nvidia/haiwen/antonia/struct2seq_bidir_rl
-ORIG_ROOT=/home/nvidia/haiwen/antonia/Struct2SeQ_training
-CONDA_SH=/home/nvidia/miniconda3/etc/profile.d/conda.sh
-ENV_PREFIX=/home/nvidia/miniconda3/envs/struct2seq
-source "$CONDA_SH"
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${STRUCT2SEQ_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+ORIG_ROOT="${ORIG_S2S_ROOT:?ORIG_S2S_ROOT must point at the original Struct2SeQ_training repo}"
+ORIG_CKPT="${ORIG_S2S_CHECKPOINT:?ORIG_S2S_CHECKPOINT must point at Struct2SeQ.pt}"
+CONDA_SH="${CONDA_SH:-$HOME/miniconda3/etc/profile.d/conda.sh}"
+ENV_PREFIX="${ENV_PREFIX:?ENV_PREFIX must point at the conda env containing accelerate}"
+
+source "$CONDA_SH"
 
 TARGETS=${ROOT}/data/eterna100/eterna100_targets_v2.csv
 RESULTS=${ROOT}/results/eterna100_eval
@@ -43,7 +50,7 @@ run_orig_one_gpu() {
       --targets-csv "$TARGETS" \
       --k-samples "$k" --batch-size "$BSZ" \
       --out-dir "$out" \
-      --checkpoint /home/nvidia/haiwen/antonia/Struct2SeQ/Struct2SeQ.pt \
+      --checkpoint "$ORIG_CKPT" \
       --sampling-mode "$mode" --p-eps "$peps"
     echo "[$(date -u)] DONE $tag"
   ) > "$LOGDIR/${tag}_parallel.log" 2>&1
@@ -52,10 +59,11 @@ run_orig_one_gpu() {
 merge_orig_3strategies() {
   # Use the env's Python directly: `conda run ... python - <<'PY'` did not reliably
   # execute this heredoc in the observed benchmark run.
-  "$ENV_PREFIX/bin/python" - <<'PY'
+  STRUCT2SEQ_ROOT="$ROOT" "$ENV_PREFIX/bin/python" - <<'PY'
+import os
 from pathlib import Path
 import pandas as pd
-root=Path('/home/nvidia/haiwen/antonia/struct2seq_bidir_rl')
+root=Path(os.environ['STRUCT2SEQ_ROOT'])
 base=root/'results/eterna100_eval'
 inputs=[
     ('eps05', base/'orig_eps05_k334_v2'/'samples.csv'),

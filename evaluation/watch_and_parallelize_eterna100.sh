@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 # Wait for current bidir Eterna100 run to finish, stop the old sequential driver,
 # then launch the optimized parallel remaining-protocol runner.
-ROOT=/home/nvidia/haiwen/antonia/struct2seq_bidir_rl
+#
+# NOTE: this script was written for a specific live recovery (the pkill PIDs
+# below were the actual running driver on 2026-05-25). On a fresh machine the
+# pkill block is a no-op; the rest is portable.
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${STRUCT2SEQ_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
 RESULTS=$ROOT/results/eterna100_eval
 LOGDIR=$ROOT/evaluation/eterna100_logs
 mkdir -p "$LOGDIR"

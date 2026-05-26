@@ -1,13 +1,26 @@
 #!/usr/bin/env bash
 # Eterna100 V2 benchmark: ours bidir_random and original Struct2SeQ baselines.
-# Run from struct2seq_bidir_rl.
+#
+# Required environment (override defaults if your layout differs):
+#   STRUCT2SEQ_ROOT   path to this repo (auto-derived from script location)
+#   ORIG_S2S_ROOT     path to the original Struct2SeQ_training repo
+#                     (needs run_ok7_orig.py at its root)
+#   ORIG_S2S_CHECKPOINT
+#                     path to the original Struct2SeQ.pt baseline checkpoint
+#   CONDA_SH          path to conda.sh (e.g. ~/miniconda3/etc/profile.d/conda.sh)
+#   ENV_PREFIX        conda env prefix containing accelerate + python deps
+#   GPUS, NPROC, BSZ, KS  optional knobs
 
-ROOT=/home/nvidia/haiwen/antonia/struct2seq_bidir_rl
-ORIG_ROOT=/home/nvidia/haiwen/antonia/Struct2SeQ_training
-CONDA_SH=/home/nvidia/miniconda3/etc/profile.d/conda.sh
-ENV_PREFIX=/home/nvidia/miniconda3/envs/struct2seq
-source "$CONDA_SH"
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="${STRUCT2SEQ_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+ORIG_ROOT="${ORIG_S2S_ROOT:?ORIG_S2S_ROOT must point at the original Struct2SeQ_training repo}"
+ORIG_CKPT="${ORIG_S2S_CHECKPOINT:?ORIG_S2S_CHECKPOINT must point at Struct2SeQ.pt}"
+CONDA_SH="${CONDA_SH:-$HOME/miniconda3/etc/profile.d/conda.sh}"
+ENV_PREFIX="${ENV_PREFIX:?ENV_PREFIX must point at the conda env containing accelerate}"
+
+source "$CONDA_SH"
 ACCEL=${ENV_PREFIX}/bin/accelerate
 TARGETS=${ROOT}/data/eterna100/eterna100_targets_v2.csv
 RESULTS=${ROOT}/results/eterna100_eval
@@ -50,7 +63,7 @@ run_orig_one() {
     --targets-csv "$TARGETS" \
     --k-samples "$k" --batch-size "$BSZ" \
     --out-dir "$out" \
-    --checkpoint /home/nvidia/haiwen/antonia/Struct2SeQ/Struct2SeQ.pt \
+    --checkpoint "$ORIG_CKPT" \
     --sampling-mode "$mode" --p-eps "$peps" \
     2>&1 | tee -a "$LOGDIR/${tag}.log"
   cd "$ROOT"
@@ -60,10 +73,11 @@ run_orig_one() {
 merge_orig_3strategies() {
   # Use the env's Python directly: `conda run ... python - <<'PY'` did not reliably
   # execute this heredoc in the observed run, causing rescue to miss merged samples.
-  "$ENV_PREFIX/bin/python" - <<'PY'
+  STRUCT2SEQ_ROOT="$ROOT" "$ENV_PREFIX/bin/python" - <<'PY'
+import os
 from pathlib import Path
 import pandas as pd
-root=Path('/home/nvidia/haiwen/antonia/struct2seq_bidir_rl')
+root=Path(os.environ['STRUCT2SEQ_ROOT'])
 base=root/'results/eterna100_eval'
 inputs=[
     ('eps05', base/'orig_eps05_k334_v2'/'samples.csv'),
