@@ -15,54 +15,6 @@ Eterna100 + OpenKnot 7 benchmarks, paper figures for the 100-mer and
 > DGX setup. Some evaluation scripts still contain machine-specific
 > paths — see *Hardcoded paths* below.
 
-## Repository structure
-
-```
-.
-├── run.py                       # Main training entry (Accelerate, bf16)
-├── Encoder_Decoder.py           # Transformer policy network (RPE arch)
-├── Functions.py                 # Reward / scheduler / play-phase utils
-├── Dataset.py                   # Structure-to-sequence dataset loader
-├── Env.py                       # RibonanzaNet-SS oracle wrapper
-├── Network_test10.py            # RibonanzaNet model definition
-├── dropout.py                   # Shared-mask dropout (OpenFold-style)
-├── default_config.yaml          # Default training hyper-parameters
-├── config_brev_8gpu.yaml        # Brev / Azure DGX (8x A100) override
-├── test10_configs/              # RibonanzaNet configs (pairwise.yaml used)
-├── launch_brev.sh               # Portable 4-GPU launcher
-├── make_arnie_dummy.py          # Writes a placeholder arnie config
-│
-├── evaluation/                  # Eterna100 + OpenKnot 7 eval pipeline
-│   ├── run_eterna100_benchmark.sh
-│   ├── run_eterna100_remaining_parallel.sh
-│   ├── watch_and_parallelize_eterna100.sh
-│   ├── prepare_eterna100_targets.py
-│   ├── write_eterna100_report.py
-│   ├── run_eval.py              # bpRNA-1m eval
-│   ├── run_ok7_eval.py          # OpenKnot 7 Round 3
-│   ├── run_bidir_rescue.py
-│   ├── motif_extraction.py
-│   ├── compute_metrics.py
-│   └── eterna100_logs/          # 240-mer Eterna100 run logs (text)
-│
-├── paper_figs/                  # Figure generation for the paper
-│   ├── make_paper_figures.py    # Current figure builder
-│   ├── analyze_results_240mer.py
-│   ├── build_master_tables.py
-│   └── *.png/svg/pdf            # Pre-rendered figures
-│
-├── data/
-│   ├── eterna100/               # Eterna100 benchmark targets
-│   └── eterna_training_dump/    # Reference Eterna puzzle dump
-│                                # (large CSV not tracked; see data/README.md)
-│
-├── icml2026/                    # ICML 2026 paper sources (.tex + figures)
-├── ideas/                       # Reward design / contrastive notes
-├── archive/                     # Superseded scripts (see docs/history/)
-├── docs/                        # Long-form docs and history
-├── eterna100_results.md         # Auto-generated Eterna100 benchmark report
-└── tests/                       # CPU smoke tests (no GPU required)
-```
 
 ## Installation
 
@@ -87,6 +39,8 @@ export ARNIEFILE="$(pwd)/arnie_file.txt"
 None of the model checkpoints or oracle weights are checked into git
 (each is 100–120 MB). Download them from Google Drive and place them
 as below.
+
+## TO ADD ##
 
 ### RibonanzaNet oracle (required for training and eval)
 
