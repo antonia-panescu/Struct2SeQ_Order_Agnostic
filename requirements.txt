@@ -1,0 +1,31 @@
+# Core training stack
+torch>=2.1
+accelerate>=0.27
+numpy
+pandas
+polars
+pyyaml
+tqdm
+einops
+matplotlib
+scikit-learn
+
+# Logging
+wandb
+
+# Optimizer
+pytorch-ranger
+
+# Evaluation / figure generation
+scipy
+seaborn
+
+# External (not on PyPI): install from the DasLab repo
+#   pip install git+https://github.com/DasLab/arnie.git
+# After install, point ARNIEFILE at your local arnie_file.txt (see README).
+# arnie
+
+# Optional, used only by motif-redesign and OpenKnot-scored eval paths
+#   git clone https://github.com/DasLab/OpenKnotScorePipeline.git
+#   export OPENKNOTSCORE_SRC=/path/to/OpenKnotScorePipeline/src
+# openknotscore
