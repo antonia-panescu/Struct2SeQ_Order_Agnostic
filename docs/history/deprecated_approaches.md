@@ -23,7 +23,7 @@ through `EXTRA_ARGS`.
 
 **When you might still want it:** to reproduce a specific resume
 command from the 2026-05-03 → 2026-05-08 sequence of preemption
-restarts (logs under `lab_notebook/2026-05-{03,08}.md`).
+restarts.
 
 ## Reserved sections
 

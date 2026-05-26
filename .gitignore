@@ -70,6 +70,10 @@ arnie_file.txt
 .env
 .envrc
 
+# --- Private research notes (kept on local disk, not published) -----------
+paper/
+lab_notebook/
+
 # --- OS junk ---------------------------------------------------------------
 .DS_Store
 Thumbs.db

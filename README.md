@@ -57,8 +57,6 @@ Eterna100 + OpenKnot 7 benchmarks, paper figures for the 100-mer and
 │                                # (large CSV not tracked; see data/README.md)
 │
 ├── icml2026/                    # ICML 2026 paper sources (.tex + figures)
-├── paper/                       # Writing prompts and idea notes
-├── lab_notebook/                # Dated lab notes (kept for provenance)
 ├── ideas/                       # Reward design / contrastive notes
 ├── archive/                     # Superseded scripts (see docs/history/)
 ├── docs/                        # Long-form docs and history
@@ -247,8 +245,7 @@ The 100-mer / 240-mer numbers in the ICML 2026 submission come from:
 - Apples-to-apples: `PAPER_TABLE_240mer.csv`
 - Sample efficiency: `paper_figs/best_of_n_240mer.csv`
 
-See `lab_notebook/` for the run-by-run trail and `icml2026/paper.tex`
-for the final manuscript.
+See `icml2026/paper.tex` for the final manuscript.
 
 ## Citing / contact
 
