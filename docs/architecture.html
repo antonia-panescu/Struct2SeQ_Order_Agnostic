@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Struct2SeQ-bidir · architecture explainer</title>
+<style>
+  :root {
+    --bg: #fafafa;
+    --fg: #1b1b1b;
+    --muted: #6a6a6a;
+    --line: #e5e5e5;
+    --keep-bg: #e6eef7;
+    --keep-edge: #5f7a9b;
+    --keep-fg: #2b3a52;
+    --new-bg: #ffe8c2;
+    --new-edge: #c46a0f;
+    --new-fg: #6d3c0a;
+    --rm-bg: #f4f4f4;
+    --rm-edge: #bcbcbc;
+    --rm-fg: #777;
+    --code-bg: #1f2330;
+    --code-fg: #e6e6ea;
+    --code-key: #ffb86c;
+    --code-str: #a3e7a3;
+    --code-com: #888;
+    --accent: #c46a0f;
+    --link: #0050a5;
+    --maxw: 900px;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--fg); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+                 "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.55;
+    margin: 0;
+    padding: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding: 32px 22px 80px;
+  }
+  h1, h2, h3 { line-height: 1.25; margin-top: 1.4em; }
+  h1 {
+    font-size: 1.95rem;
+    margin: 0 0 0.25em;
+    letter-spacing: -0.01em;
+  }
+  .lede {
+    color: var(--muted);
+    font-size: 1.02rem;
+    margin: 0.2em 0 1em;
+  }
+  .meta {
+    font-size: 0.85rem;
+    color: var(--muted);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    padding: 8px 0;
+    margin: 18px 0 28px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+  }
+  .meta a { color: var(--link); text-decoration: none; }
+  .meta a:hover { text-decoration: underline; }
+
+  h2 {
+    font-size: 1.35rem;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 6px;
+  }
+  h3 {
+    font-size: 1.05rem;
+    color: var(--fg);
+  }
+
+  .nav {
+    position: sticky;
+    top: 0;
+    background: rgba(250, 250, 250, 0.95);
+    backdrop-filter: saturate(140%) blur(6px);
+    border-bottom: 1px solid var(--line);
+    z-index: 10;
+  }
+  .nav-inner {
+    max-width: var(--maxw);
+    margin: 0 auto;
+    padding: 10px 22px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    font-size: 0.9rem;
+  }
+  .nav-inner a {
+    color: var(--fg);
+    text-decoration: none;
+    padding: 2px 0;
+    border-bottom: 1px solid transparent;
+  }
+  .nav-inner a:hover { border-bottom-color: var(--accent); }
+
+  .pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  .pill-new {
+    background: var(--new-bg);
+    color: var(--new-fg);
+    border: 1px solid var(--new-edge);
+  }
+  .pill-keep {
+    background: var(--keep-bg);
+    color: var(--keep-fg);
+    border: 1px solid var(--keep-edge);
+  }
+  .pill-rm {
+    background: var(--rm-bg);
+    color: var(--rm-fg);
+    border: 1px solid var(--rm-edge);
+  }
+
+  .arch-frame {
+    margin: 14px 0 4px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #fff;
+    padding: 12px;
+    text-align: center;
+  }
+  .arch-frame img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+  }
+  .arch-caption {
+    color: var(--muted);
+    font-size: 0.85rem;
+    margin-top: 10px;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin: 12px 0 26px;
+  }
+  .legend span.sw {
+    display: inline-block;
+    width: 14px; height: 14px;
+    margin-right: 6px;
+    border-radius: 3px;
+    vertical-align: -3px;
+  }
+  .sw.keep { background: var(--keep-bg); border: 1px solid var(--keep-edge); }
+  .sw.new  { background: var(--new-bg);  border: 1px solid var(--new-edge); }
+  .sw.rm   { background: var(--rm-bg);   border: 1px solid var(--rm-edge); }
+
+  details.card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin: 12px 0;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+  }
+  details.card[data-kind="new"]  { border-left: 4px solid var(--new-edge); }
+  details.card[data-kind="keep"] { border-left: 4px solid var(--keep-edge); }
+  details.card[data-kind="rm"]   { border-left: 4px solid var(--rm-edge); }
+
+  details.card > summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    user-select: none;
+  }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary .title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  details.card > summary .chev {
+    flex-shrink: 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+    transition: transform 0.18s ease;
+  }
+  details.card[open] > summary .chev { transform: rotate(90deg); }
+  details.card > .body {
+    padding: 4px 16px 18px;
+    border-top: 1px solid var(--line);
+    background: #fdfdfd;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+  }
+  details.card > .body p {
+    margin: 12px 0;
+  }
+  details.card > .body p:first-child { margin-top: 14px; }
+
+  .body .plain {
+    font-size: 1.02rem;
+  }
+  .body .technical {
+    color: var(--fg);
+  }
+  .body h4 {
+    margin: 16px 0 4px;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 700;
+  }
+  pre.code {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 12px 14px;
+    border-radius: 6px;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    margin: 8px 0 12px;
+  }
+  pre.code .k { color: var(--code-key); }
+  pre.code .s { color: var(--code-str); }
+  pre.code .c { color: var(--code-com); font-style: italic; }
+  code.inline {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    background: #efeae1;
+    color: #5a3210;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.92em;
+  }
+  .file-ref {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.86rem;
+    color: var(--muted);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.94rem;
+    margin: 10px 0 18px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  th, td {
+    padding: 9px 11px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--line);
+  }
+  tr:last-child td { border-bottom: none; }
+  th {
+    background: #f4f4f4;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    font-weight: 700;
+  }
+
+  .quote {
+    border-left: 4px solid var(--accent);
+    background: #fff7ec;
+    padding: 12px 16px;
+    font-style: italic;
+    margin: 14px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  .quote .who {
+    display: block;
+    margin-top: 6px;
+    font-style: normal;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin: 6px 0 20px;
+  }
+  .controls button {
+    font: inherit;
+    font-size: 0.85rem;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .controls button:hover { border-color: var(--accent); }
+
+  footer {
+    margin-top: 50px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+  footer a { color: var(--link); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="#tldr">TL;DR</a>
+    <a href="#diagram">Diagram</a>
+    <a href="#components">Components</a>
+    <a href="#interlocking">Why it interlocks</a>
+    <a href="#novelty">Novelty</a>
+    <a href="#story">Pitch</a>
+  </div>
+</nav>
+
+<main>
+
+<h1>Struct2SeQ-bidir — architecture explainer</h1>
+<p class="lede">
+  Plain-English walk-through of every component in the bidirectional /
+  order-agnostic RL extension of Struct2SeQ. Each card explains what a
+  block does, why it&rsquo;s needed, and where to find it in the code.
+</p>
+<div class="meta">
+  <span>RNA inverse folding · Q-learning · order-agnostic decoding</span>
+  <span>·</span>
+  <a href="https://github.com/antonia-panescu/Struct2SeQ_bidir">repo</a>
+  <a href="https://github.com/antonia-panescu/Struct2SeQ_bidir/blob/main/paper_figs/fig_architecture.pdf">figure (PDF)</a>
+</div>
+
+<section id="tldr">
+<h2>TL;DR</h2>
+<p>
+  The original Struct2SeQ decoded RNA sequences <strong>left&nbsp;to&nbsp;right</strong>
+  using an LSTM positional encoder plus a CausalConv1d &mdash; both
+  hard-coded that order. We replaced those with
+  <strong>T5-style relative-position attention biases</strong> in the
+  decoder so it becomes order-equivariant, then trained it with
+  <strong>random per-sample decoding permutations</strong> tiled
+  <strong>K&nbsp;times</strong> per target. The reward (per-position binary
+  partner-match) is gathered through the same permutation, so the
+  Q-learning TD update is consistent with the shuffled decode order.
+</p>
+<p>
+  Result at K=1000 on 240-mer targets: <strong>2.32&times; over the L&rarr;R baseline</strong>.
+</p>
+</section>
+
+<section id="diagram">
+<h2>Architecture diagram</h2>
+<div class="arch-frame">
+  <img src="../paper_figs/fig_architecture.png"
+       alt="Struct2SeQ-bidir architecture. Encoder unchanged from
+            Struct2SeQ; decoder has new components (random permutation,
+            K-permutation tiling, paired_encoding gather, RPE_self,
+            RPE_cross, permutation-consistent Q-learning) highlighted
+            in orange." />
+  <div class="arch-caption">
+    Generated by
+    <code class="inline">paper_figs/make_architecture_figure.py</code>.
+    PDF version in <code class="inline">paper_figs/fig_architecture.pdf</code>.
+  </div>
+</div>
+<div class="legend">
+  <div><span class="sw keep"></span> Inherited from Struct2SeQ (Shujun et al.)</div>
+  <div><span class="sw new"></span> New in this work (bidir / order-agnostic)</div>
+  <div><span class="sw rm"></span> Removed</div>
+</div>
+</section>
+
+<section id="components">
+<h2>What each block does</h2>
+<div class="controls">
+  <button onclick="setAll(true)">Expand all</button>
+  <button onclick="setAll(false)">Collapse all</button>
+</div>
+
+<!-- 1 -->
+<details class="card" data-kind="new" open>
+  <summary>
+    <div class="title">
+      <span class="pill pill-new">NEW</span>
+      Random permutation <code class="inline">perm[B, L]</code>
+    </div>
+    <span class="chev">&rsaquo;</span>
+  </summary>
+  <div class="body">
+    <p class="plain">
+      A random ordering of the L positions of the RNA, one per sample in
+      the batch. It says &ldquo;decode position 47 first, then position 12,
+      then position 199 &hellip;&rdquo;. The original model always decoded in
+      order 1, 2, 3, &hellip;, L.
+    </p>
+    <h4>Where in the code</h4>
+    <p class="file-ref">
+      <code class="inline">run.py:225&ndash;233</code> (training) and
+      <code class="inline">run.py:450</code> (generation).
+    </p>
+<pre class="code"><span class="c"># Per-sample [B, L] random permutations: perm[b, t] is the RNA</span>
+<span class="c"># position predicted at step t for batch element b.</span>
+perm = torch.stack(
+    [torch.randperm(L, device=sequence.device) <span class="k">for</span> _ <span class="k">in</span> range(B)]
+)</pre>
+    <h4>Why we need it</h4>
+    <p>
+      A model that can decode in any order has to learn nucleotide
+      identities that hold regardless of when each position gets filled
+      in. The fixed L&rarr;R order in the original Struct2SeQ lets the
+      model rely on left-context shortcuts (&ldquo;at step t the model has
+      already seen positions 0&hellip;t-1&rdquo;), which is brittle and limits
+      how the model can be combined with inference-time strategies
+      (e.g. in-painting fixed motifs).
+    </p>
+  </div>
+</details>
+
+<!-- 2 -->
+<details class="card" data-kind="new">
+  <summary>
+    <div class="title">
+      <span class="pill pill-new">NEW</span>
+      K-permutation tiling
+      <small style="color:var(--muted); font-weight:400;">(training only)</small>
+    </div>
+    <span class="chev">&rsaquo;</span>
+  </summary>
+  <div class="body">
+    <p class="plain">
+      We copy each target K times in the batch and pair each copy with a
+      different random <code class="inline">perm</code>. The model sees
+      the same structure decoded in K different orders simultaneously,
+      so it can&rsquo;t get away with memorizing &ldquo;what to put at step
+      0&rdquo; &mdash; it has to learn what nucleotide belongs at each RNA
+      position regardless of when it gets to decode it.
+    </p>
+    <h4>Where in the code</h4>
+    <p class="file-ref">
+      <code class="inline">run.py:212&ndash;231</code>;
+      controlled by <code class="inline">k_perm</code> in
+      <code class="inline">config_brev_8gpu.yaml</code> (default <code class="inline">k_perm: 4</code>).
+    </p>
+<pre class="code"><span class="c"># K-permutation tiling: replicate each sample K times along batch dim,</span>
+<span class="c"># draw an independent random permutation per replica. Forces the</span>
+<span class="c"># decoder to learn permutation-invariant features per data sample.</span>
+K = max(<span class="s">1</span>, getattr(config, <span class="s">"k_perm"</span>, <span class="s">1</span>))</pre>
+    <h4>Why we need it</h4>
+    <p>
+      Without tiling, each target sees one random order per epoch and
+      the gradient signal for &ldquo;this position should be a&nbsp;C&rdquo; is
+      averaged over many different decoding contexts only across the
+      dataset. With K replicas of the <em>same</em> target in one batch,
+      the averaging happens per&ndash;example per&ndash;step and the
+      permutation-invariance constraint is enforced more tightly.
+    </p>
+  </div>
+</details>
+
+<!-- 3 -->
+<details class="card" data-kind="new">
+  <summary>
+    <div class="title">
+      <span class="pill pill-new">NEW</span>
+      Shifted-right <code class="inline">tgt</code> + <code class="inline">paired_encoding</code> gathered through <code class="inline">perm</code>
+    </div>
+    <span class="chev">&rsaquo;</span>
+  </summary>
+  <div class="body">
+    <p class="plain">
+      The decoder needs to know what nucleotide it picked last step, and
+      whether the position being predicted is paired or unpaired. Once
+      we shuffle the decoding order, we have to reorder the ground-truth
+      sequence and the paired/unpaired indicator the same way (that&rsquo;s
+      what <code class="inline">gather(1, perm)</code> does). Without
+      this, the inputs and labels would no longer line up.
+    </p>
+    <h4>Where in the code</h4>
+    <p class="file-ref"><code class="inline">run.py:232&ndash;245</code></p>
+<pre class="code"><span class="c"># Permute sequence and reward to match decoding order</span>
+sequence_perm = sequence.gather(<span class="s">1</span>, perm)
+reward_perm = reward.gather(<span class="s">1</span>, perm)
+paired_encoding_perm = (structure == <span class="s">0</span>).long().gather(<span class="s">1</span>, perm)
+
+<span class="c"># Build shifted sequence in permuted order (START token at slot 0)</span>
+shifted[:, <span class="s">1</span>:] = sequence_perm[:, :-<span class="s">1</span>]</pre>
+    <h4>Why we need it</h4>
+    <p>
+      Otherwise the decoder at step <em>t</em> would receive the
+      previous nucleotide in the <em>original</em> RNA-order frame while
+      it is being asked to predict <code class="inline">perm[t]</code>
+      &mdash; a misalignment that destroys the teacher-forcing signal.
+    </p>
+  </div>
+</details>
+
+<!-- 4 -->
+<details class="card" data-kind="new">
+  <summary>
+    <div class="title">
+      <span class="pill pill-new">NEW</span>
+      <code class="inline">RPE_self</code> &mdash; relative-position bias for decoder self-attention
+      <small style="color:var(--accent); font-weight:600;">★ key architectural change</small>
+    </div>
+    <span class="chev">&rsaquo;</span>
+  </summary>
+  <div class="body">
+    <p class="plain">
+      A learned bias added to attention scores between two decoder
+      positions. Crucially, the bias depends on the
+      <strong>RNA-position distance</strong> between them
+      &mdash; <code class="inline">perm[t<sub>1</sub>] &minus; perm[t<sub>2</sub>]</code>
+      &mdash; not on how many decoder steps apart they are. Bucketed
+      T5-style so it can express both &ldquo;right next to each other&rdquo;
+      and &ldquo;very far away on the strand&rdquo; smoothly. This lets the
+      decoder use spatial information on the RNA without caring about
+      decode order.
+    </p>
+    <h4>Where in the code</h4>
+    <p class="file-ref"><code class="inline">Encoder_Decoder.py:196&ndash;260</code> (class) and <code class="inline">:339&ndash;346</code> (usage)</p>
+<pre class="code"><span class="c"># Decide which step indices the current tgt corresponds to.</span>
+self_q_pos = perm[:, :L]   <span class="c"># RNA position of each query step</span>
+self_k_pos = perm[:, :L]   <span class="c"># RNA position of each key step</span>
+
+<span class="c"># Self-attention bias: [B, n_heads, Lq, Lk]</span>
+self_bias = self.rpe_self(self_q_pos, self_k_pos)</pre>
+    <h4>Why we need it</h4>
+    <p>
+      Without RPE, the decoder gets <em>no</em> position information
+      under random-order decoding (we deliberately stripped out the
+      LSTM and CausalConv1d that used to encode it; see the
+      &ldquo;Removed&rdquo; card below). RPE supplies that information in a
+      form that is invariant to step order &mdash; the model can ask
+      &ldquo;how far is position 47 from position 199 on the RNA?&rdquo; and
+      get a consistent answer no matter when either was decoded.
+    </p>
+  </div>
+</details>
+
+<!-- 5 -->
+<details class="card" data-kind="new">
+  <summary>
+    <div class="title">
+      <span class="pill pill-new">NEW</span>
+      <code class="inline">RPE_cross</code> &mdash; relative-position bias for decoder &rarr; encoder cross-attention
+      <small style="color:var(--accent); font-weight:600;">★ key architectural change</small>
+    </div>
+    <span class="chev">&rsaquo;</span>
+  </summary>
+  <div class="body">
+    <p class="plain">
+      Same trick, but for when the decoder looks at the encoder&rsquo;s
+      structure representation. The bias is RNA-distance between the
+      position being predicted (<code class="inline">perm[t]</code>) and
+      the encoder memory slot being read (which sits at its true RNA
+      position, <code class="inline">0 &hellip; L&minus;1</code>). This
+      keeps the encoder and decoder talking in the same coordinate
+      system: RNA-space.
+    </p>
+    <h4>Where in the code</h4>
+    <p class="file-ref"><code class="inline">Encoder_Decoder.py:286&ndash;295</code> (separate parameter table) and <code class="inline">:349&ndash;353</code> (usage)</p>
+<pre class="code"><span class="c"># Cross-attention bias: encoder memory keys are at RNA positions 0..L_enc-1</span>
+<span class="k">if</span> encoder_perm <span class="k">is</span> <span class="k">None</span>:
+    encoder_perm = torch.arange(L_enc, device=tgt.device) \
+                        .unsqueeze(<span class="s">0</span>).expand(B, L_enc)
+cross_bias = self.rpe_cross(self_q_pos, encoder_perm)</pre>
+    <h4>Why two separate RPE tables?</h4>
+    <p>
+      The distribution of relative offsets is different for self-attn
+      (decoder ↔ decoder, both at permuted positions) vs cross-attn
+      (decoder query at <code class="inline">perm[t]</code>, encoder key
+      at fixed RNA position). Sharing parameters would force one table
+      to model both regimes; we keep them separate.
+    </p>
+  </div>
+</details>
+
+<!-- 6 -->
+<details class="card" data-kind="new">
+  <summary>
+    <div class="title">
+      <span class="pill pill-new">NEW</span>
+      Q-learning TD target with reward gathered through <code class="inline">perm</code>
+    </div>
+    <span class="chev">&rsaquo;</span>
+  </summary>
+  <div class="body">
+    <p class="plain">
+      Same Q-learning loss as the original Struct2SeQ &mdash; predict
+      expected future per-position reward. The only change is that the
+      reward at step <em>t</em> is the reward for the position
+      <code class="inline">perm[t]</code> (not position <em>t</em>), so
+      the temporal-difference target is consistent with the shuffled
+      order. The model gets the right credit at the right step.
+    </p>
+    <h4>Where in the code</h4>
+    <p class="file-ref"><code class="inline">run.py:295</code> (TD target);
+      <code class="inline">run.py:233</code> (reward gather)</p>
+<pre class="code">reward_perm = reward.gather(<span class="s">1</span>, perm)
+<span class="c"># &hellip;</span>
+expected_q = reward_perm + (gamma * next_q)</pre>
+    <h4>Why we need it</h4>
+    <p>
+      It&rsquo;s mechanical, but easy to get wrong: if the reward stays in
+      RNA order while everything else is in permuted order, the model
+      learns to attribute step <em>t</em>&rsquo;s loss to the wrong
+      nucleotide. Gathering rewards through <code class="inline">perm</code>
+      is what makes the RL objective compatible with permutation
+      decoding.
+    </p>
+  </div>
+</details>
+
+<!-- removed -->
+<details class="card" data-kind="rm">
+  <summary>
+    <div class="title">
+      <span class="pill pill-rm">REMOVED</span>
+      LSTM positional encoder + CausalConv1d (in the decoder)
+    </div>
+    <span class="chev">&rsaquo;</span>
+  </summary>
+  <div class="body">
+    <p class="plain">
+      The original Struct2SeQ decoder ran a one-direction LSTM and a
+      CausalConv1d over the token embeddings to provide position
+      information. Both are inherently left-to-right operators:
+      <ul>
+        <li>The LSTM is recurrent forward in time.</li>
+        <li>CausalConv1d only looks at past timesteps.</li>
+      </ul>
+      Under a random decode order, &ldquo;the start&rdquo; is meaningless
+      &mdash; what is step 0 for one sample is step 87 for another.
+      These layers would produce nonsense position signals. We replaced
+      them with <code class="inline">RPE_self</code> /
+      <code class="inline">RPE_cross</code>, which work in RNA-position
+      space and are invariant to step order.
+    </p>
+    <h4>Where in the code</h4>
+    <p class="file-ref">Originally in <code class="inline">Decoder</code> class (still present at <code class="inline">Encoder_Decoder.py:154</code> for reference). Replaced by <code class="inline">OptimizedTransformerDecoder</code> at <code class="inline">Encoder_Decoder.py:263&ndash;395</code>, used by the model in <code class="inline">DotBracketRNATransformer</code>.</p>
+    <h4>Why this matters</h4>
+    <p>
+      Removing these is what <em>forces</em>
+      <code class="inline">RPE_self</code> and
+      <code class="inline">RPE_cross</code> to do all the position work.
+      The two changes &mdash; ripping out the L&rarr;R-baked operators
+      and adding the order-equivariant RPE &mdash; are a single
+      architectural move dressed as two commits.
+    </p>
+  </div>
+</details>
+
+<!-- encoder kept -->
+<details class="card" data-kind="keep">
+  <summary>
+    <div class="title">
+      <span class="pill pill-keep">INHERITED</span>
+      Encoder (unchanged)
+    </div>
+    <span class="chev">&rsaquo;</span>
+  </summary>
+  <div class="body">
+    <p class="plain">
+      The encoder still runs LSTM positional encoder &rarr; Conv1d
+      (k=5) + Dropout &rarr; LayerNorm with residual &rarr; GraphConv
+      (GeM pooling over the CT base-pair matrix) &rarr; N standard
+      TransformerEncoderLayers. We didn&rsquo;t touch it because the input
+      structure (dot-bracket) is fixed and has a fixed canonical order,
+      so the L&rarr;R operators do no harm here.
+    </p>
+    <h4>Where in the code</h4>
+    <p class="file-ref"><code class="inline">Encoder_Decoder.py:100&ndash;142</code> (class
+    <code class="inline">Encoder</code>)</p>
+  </div>
+</details>
+
+</section>
+
+<section id="interlocking">
+<h2>Why these pieces only make sense together</h2>
+<p>
+  None of the new components is independently sensible. The story is
+  a single methodological choice with consequences:
+</p>
+<ol>
+  <li>
+    The training-procedure changes &mdash;
+    <code class="inline">perm</code>, K-permutation tiling, gathered
+    rewards &mdash; <em>require</em> an architecture that can handle
+    different decode orders without confusion.
+  </li>
+  <li>
+    The architecture is order-equivariant <em>only</em> after the
+    LSTM and CausalConv1d are removed.
+  </li>
+  <li>
+    Removing them leaves the decoder with no position information at
+    all. That&rsquo;s why <code class="inline">RPE_self</code> and
+    <code class="inline">RPE_cross</code> have to be added.
+  </li>
+  <li>
+    Once decoding is permuted, the per-position reward signal has to
+    be permuted too, otherwise the Q-learning TD update is incoherent.
+  </li>
+</ol>
+<p>
+  Pull any one out and the rest stop working. That coupling is the
+  point.
+</p>
+</section>
+
+<section id="novelty">
+<h2>Is this novel or borrowed?</h2>
+
+<p>
+  Honest self-assessment: the <strong>individual ingredients are not
+  novel</strong>. The <strong>combination is</strong>, and so is the
+  result for RNA design.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Component</th>
+      <th>Prior art</th>
+      <th>Novelty here</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>T5-style bucketed RPE (self &amp; cross)</td>
+      <td>Raffel et&nbsp;al., 2020 (T5, JMLR). Verbatim including the bidirectional bucketing.</td>
+      <td>None. Applied off-the-shelf.</td>
+    </tr>
+    <tr>
+      <td>Permutation-based decoding</td>
+      <td>
+        XLNet (Yang et al., 2019, NeurIPS) &mdash; permutation language modelling.<br/>
+        ProteinMPNN (Dauparas et al., 2022, Science) &mdash; order-agnostic
+        decoding for the sibling task: <em>protein</em> inverse folding.
+      </td>
+      <td>Application to RNA inverse folding.</td>
+    </tr>
+    <tr>
+      <td>K-permutation tiling (K copies per minibatch)</td>
+      <td>Not aware of an exact precedent. XLNet samples one perm per sequence.</td>
+      <td>Possibly original. Worth a careful lit search before claiming this in print.</td>
+    </tr>
+    <tr>
+      <td>Q-learning per-position reward for RNA design</td>
+      <td>Struct2SeQ (Shujun et al.). Inherited.</td>
+      <td>None.</td>
+    </tr>
+    <tr>
+      <td>Permutation-consistent Q-learning (reward gather through <code class="inline">perm</code>)</td>
+      <td>Mechanical consequence of combining the above two.</td>
+      <td>Forced by the design; not novel in isolation.</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>
+  The closest cousin in the literature is <strong>ProteinMPNN</strong>.
+  Read it carefully before tomorrow &mdash; it is doing the same
+  conceptual move (random-order autoregressive decoding for inverse
+  folding) for proteins, under supervised cross-entropy. Two
+  differences that buy us novelty:
+</p>
+<ul>
+  <li><strong>RNA, not protein.</strong> Different oracle, different evaluation, different structural constraints (paired/unpaired indicator, base-pair graph).</li>
+  <li><strong>RL with a non-differentiable structural reward, not cross-entropy.</strong> The non-trivial coupling (gathering rewards through <code class="inline">perm</code> for the TD target) only exists in the RL setting.</li>
+</ul>
+</section>
+
+<section id="story">
+<h2>How to pitch this at ICML</h2>
+
+<p>
+  Don&rsquo;t pitch this as &ldquo;we invented permutation decoding&rdquo;.
+  A reviewer who has read XLNet or ProteinMPNN will close the tab.
+</p>
+
+<div class="quote">
+  ProteinMPNN showed order-agnostic decoding works for protein inverse
+  folding under cross-entropy supervision. We ask: does it also work
+  for RNA, under RL with non-differentiable structural rewards? The
+  non-trivial part is the architecture &mdash; the original Struct2SeQ
+  decoder bakes L&rarr;R into its LSTM positional encoder &mdash; so we
+  replace it with T5-style relative-position bias to make the decoder
+  permutation-equivariant. The result is the first order-agnostic RL
+  framework for RNA design, with [headline number] improvement over the
+  L&rarr;R Struct2SeQ baseline.
+  <span class="who">&mdash; suggested framing</span>
+</div>
+
+<h3>Lit-review search terms to run before tomorrow</h3>
+<ul>
+  <li>&ldquo;permutation language model&rdquo; / XLNet derivatives</li>
+  <li>&ldquo;order-agnostic&rdquo; + (&ldquo;autoregressive&rdquo; OR &ldquo;decoding&rdquo; OR &ldquo;generation&rdquo;)</li>
+  <li>ProteinMPNN (read it carefully)</li>
+  <li>&ldquo;non-autoregressive RNA design&rdquo; (different, but reviewers will ask)</li>
+  <li>&ldquo;RL for biological sequence design&rdquo;</li>
+</ul>
+</section>
+
+<footer>
+  Single-file HTML, no external deps. Source at
+  <a href="https://github.com/antonia-panescu/Struct2SeQ_bidir/blob/main/docs/architecture.html"><code>docs/architecture.html</code></a>.
+  Figure script at
+  <a href="https://github.com/antonia-panescu/Struct2SeQ_bidir/blob/main/paper_figs/make_architecture_figure.py"><code>paper_figs/make_architecture_figure.py</code></a>.
+</footer>
+
+</main>
+
+<script>
+  function setAll(open) {
+    document.querySelectorAll("details.card").forEach(d => d.open = open);
+  }
+</script>
+
+</body>
+</html>
