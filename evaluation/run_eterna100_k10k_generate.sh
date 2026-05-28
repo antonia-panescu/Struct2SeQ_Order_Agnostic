@@ -27,31 +27,50 @@ K1="${K1:-3334}"; K2="${K2:-3333}"; K3="${K3:-3333}"
 mkdir -p "$RESULTS" "$LOGDIR"
 echo "[$(date -u)] K=$KS generation -> $RESULTS  (GPUS=$GPUS)"
 
+MAX_ATTEMPTS="${MAX_ATTEMPTS:-100}"
+
+# A variant is complete once its summary.csv has the full 100-puzzle table
+# (101 lines incl. header). NOTE: we never rm -rf the output dir -- the per-rank
+# append CSVs + batches_done.txt let run_ok7_*.py fast-skip completed batches,
+# so a pre-empted/killed job RESUMES on the next attempt instead of restarting.
+is_complete() {  # $1 = out dir
+  [ -f "$1/summary.csv" ] && [ "$(wc -l < "$1/summary.csv" 2>/dev/null || echo 0)" -ge 101 ]
+}
+
 run_bidir() {
-  local out="$RESULTS/bidir_random_k10000_v2"; rm -rf "$out"
-  echo "[$(date -u)] bidir_random K=$KS" | tee "$LOGDIR/bidir.log"
+  local out="$RESULTS/bidir_random_k10000_v2" a=0
   cd "$ROOT"
-  CUDA_VISIBLE_DEVICES="$GPUS" NCCL_TIMEOUT=14400 "$ACCEL" launch \
-    --mixed_precision bf16 --num_processes "$NPROC" --main_process_port 29620 \
-    evaluation/run_ok7_eval.py \
-    --targets-csv "$TARGETS" --k-samples "$KS" --batch-size "$BSZ" \
-    --out-dir "$out" --model bidir --inference-mode random \
-    2>&1 | tee -a "$LOGDIR/bidir.log"
+  until is_complete "$out"; do
+    a=$((a+1)); [ "$a" -gt "$MAX_ATTEMPTS" ] && { echo "FATAL bidir failed x$MAX_ATTEMPTS"; exit 1; }
+    echo "[$(date -u)] bidir_random K=$KS (attempt $a, resumes if partial)" | tee -a "$LOGDIR/bidir.log"
+    CUDA_VISIBLE_DEVICES="$GPUS" NCCL_TIMEOUT=14400 "$ACCEL" launch \
+      --mixed_precision bf16 --num_processes "$NPROC" --main_process_port 29620 \
+      evaluation/run_ok7_eval.py \
+      --targets-csv "$TARGETS" --k-samples "$KS" --batch-size "$BSZ" \
+      --out-dir "$out" --model bidir --inference-mode random \
+      2>&1 | tee -a "$LOGDIR/bidir.log" || echo "[$(date -u)] bidir attempt $a exited nonzero; will resume"
+    sleep 5
+  done
+  echo "[$(date -u)] bidir COMPLETE"
 }
 
 run_orig_one() {
   local tag="$1" mode="$2" peps="$3" k="$4" port="$5"
-  local out="$RESULTS/${tag}_v2"; rm -rf "$out"
-  echo "[$(date -u)] orig $tag mode=$mode p=$peps K=$k" | tee "$LOGDIR/${tag}.log"
-  cd "$ORIG_ROOT"
-  CUDA_VISIBLE_DEVICES="$GPUS" NCCL_TIMEOUT=14400 "$ACCEL" launch \
-    --mixed_precision bf16 --num_processes "$NPROC" --main_process_port "$port" \
-    run_ok7_orig.py \
-    --targets-csv "$TARGETS" --k-samples "$k" --batch-size "$BSZ" \
-    --out-dir "$out" --checkpoint "$ORIG_CKPT" \
-    --sampling-mode "$mode" --p-eps "$peps" \
-    2>&1 | tee -a "$LOGDIR/${tag}.log"
-  cd "$ROOT"
+  local out="$RESULTS/${tag}_v2" a=0
+  until is_complete "$out"; do
+    a=$((a+1)); [ "$a" -gt "$MAX_ATTEMPTS" ] && { echo "FATAL $tag failed x$MAX_ATTEMPTS"; exit 1; }
+    echo "[$(date -u)] orig $tag mode=$mode p=$peps K=$k (attempt $a)" | tee -a "$LOGDIR/${tag}.log"
+    cd "$ORIG_ROOT"
+    CUDA_VISIBLE_DEVICES="$GPUS" NCCL_TIMEOUT=14400 "$ACCEL" launch \
+      --mixed_precision bf16 --num_processes "$NPROC" --main_process_port "$port" \
+      run_ok7_orig.py \
+      --targets-csv "$TARGETS" --k-samples "$k" --batch-size "$BSZ" \
+      --out-dir "$out" --checkpoint "$ORIG_CKPT" \
+      --sampling-mode "$mode" --p-eps "$peps" \
+      2>&1 | tee -a "$LOGDIR/${tag}.log" || echo "[$(date -u)] $tag attempt $a exited nonzero; will resume"
+    cd "$ROOT"; sleep 5
+  done
+  echo "[$(date -u)] orig $tag COMPLETE"
 }
 
 merge_3strat() {
@@ -86,13 +105,18 @@ PY
 }
 
 run_rescue_rnet() {
-  local out="$RESULTS/orig_3strategies_rescue_k10000_v2"; rm -rf "$out"
-  echo "[$(date -u)] RNet rescue" | tee "$LOGDIR/rescue_rnet.log"
+  local out="$RESULTS/orig_3strategies_rescue_k10000_v2" a=0
   cd "$ROOT"
-  CUDA_VISIBLE_DEVICES="${GPUS%%,*}" conda run -p "$SS" python evaluation/run_rescue.py \
-    --in-samples "$RESULTS/orig_3strategies_k10000_v2/samples.csv" \
-    --out-dir "$out" --targets-csv "$TARGETS" --device cuda:0 \
-    2>&1 | tee -a "$LOGDIR/rescue_rnet.log"
+  until is_complete "$out"; do
+    a=$((a+1)); [ "$a" -gt "$MAX_ATTEMPTS" ] && { echo "FATAL rescue failed x$MAX_ATTEMPTS"; exit 1; }
+    echo "[$(date -u)] RNet rescue (attempt $a)" | tee -a "$LOGDIR/rescue_rnet.log"
+    CUDA_VISIBLE_DEVICES="${GPUS%%,*}" conda run -p "$SS" python evaluation/run_rescue.py \
+      --in-samples "$RESULTS/orig_3strategies_k10000_v2/samples.csv" \
+      --out-dir "$out" --targets-csv "$TARGETS" --device cuda:0 \
+      2>&1 | tee -a "$LOGDIR/rescue_rnet.log" || echo "[$(date -u)] rescue attempt $a nonzero; retry"
+    sleep 5
+  done
+  echo "[$(date -u)] RNet rescue COMPLETE"
 }
 
 run_bidir
