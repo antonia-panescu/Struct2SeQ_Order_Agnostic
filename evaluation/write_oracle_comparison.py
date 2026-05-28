@@ -16,19 +16,29 @@ from pathlib import Path
 
 import pandas as pd
 
+import os
+
 ROOT = Path(__file__).resolve().parent.parent
 
-VARIANTS = [
-    ("bidir_random_k1000_v2", "S2S-bidir (random-perm, argmax)"),
-    ("orig_l2r_argmax_k1000_v2", "Original S2S argmax"),
-    ("orig_3strategies_k1000_v2", "Original S2S 3-strategies"),
-    ("orig_3strategies_rescue_v2", "Original S2S 3-strategies + rescue"),
-]
+# Config is overridable via env vars so the same report builder serves the
+# K=1000 (default) and K=10k sweeps.
+#   CMP_VARIANTS = "dir1:label1;dir2:label2;..."  (per-oracle subdir + label)
+#   CMP_RNET_ROOT / CMP_VIENNA_ROOT / CMP_ETERNA_ROOT = results roots
+#   CMP_OUT = output markdown path
+_DEFAULT_VARIANTS = (
+    "bidir_random_k1000_v2:S2S-bidir (random-perm, argmax);"
+    "orig_l2r_argmax_k1000_v2:Original S2S argmax;"
+    "orig_3strategies_k1000_v2:Original S2S 3-strategies;"
+    "orig_3strategies_rescue_v2:Original S2S 3-strategies + rescue"
+)
+VARIANTS = [tuple(x.split(":", 1)) for x in
+            os.environ.get("CMP_VARIANTS", _DEFAULT_VARIANTS).split(";") if x]
 ORACLES = [
-    ("rnet", "RibonanzaNet", ROOT / "results" / "eterna100_eval"),
-    ("vienna", "ViennaRNA 2", ROOT / "results" / "eterna100_eval_vienna"),
-    ("eternafold", "EternaFold", ROOT / "results" / "eterna100_eval_eternafold"),
+    ("rnet", "RibonanzaNet", Path(os.environ.get("CMP_RNET_ROOT", ROOT / "results" / "eterna100_eval"))),
+    ("vienna", "ViennaRNA 2", Path(os.environ.get("CMP_VIENNA_ROOT", ROOT / "results" / "eterna100_eval_vienna"))),
+    ("eternafold", "EternaFold", Path(os.environ.get("CMP_ETERNA_ROOT", ROOT / "results" / "eterna100_eval_eternafold"))),
 ]
+OUT_MD = Path(os.environ.get("CMP_OUT", ROOT / "eterna100_oracle_comparison.md"))
 
 
 def load(oracle_key, root, variant):
@@ -122,7 +132,7 @@ def main():
         L.append("| " + " | ".join(rowcells) + " |")
     L.append("")
 
-    out = ROOT / "eterna100_oracle_comparison.md"
+    out = OUT_MD
     out.write_text("\n".join(L))
     print(f"wrote {out}")
     # echo headline to stdout
