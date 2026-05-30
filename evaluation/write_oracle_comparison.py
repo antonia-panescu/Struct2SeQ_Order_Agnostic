@@ -72,7 +72,8 @@ def main():
 
     L = []
     L.append("# Eterna100-V2: solved across folding oracles\n")
-    L.append("Same 4 models, identical generated sequences (K=1000 budget); only the "
+    budget = os.environ.get("CMP_BUDGET", "K=1000")
+    L.append(f"Same models, identical generated sequences ({budget} budget); only the "
              "fold-back oracle differs. A puzzle is **solved** when >=1 design folds "
              "exactly to the target (base-pair Jaccard == 1.0) — the canonical "
              "Eterna100 criterion. ViennaRNA 2 is the reference engine the V2 targets "

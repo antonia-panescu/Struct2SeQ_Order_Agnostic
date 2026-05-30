@@ -38,7 +38,8 @@ for ORACLE in vienna eternafold; do
 done
 
 echo "==================== comparison report ===================="
-CMP_VARIANTS="bidir_random_k10000_v2:S2S-bidir (random-perm, argmax);orig_3strategies_k10000_v2:Original S2S 3-strategies;orig_3strategies_rescue_k10000_v2:Original S2S 3-strategies + rescue" \
+CMP_BUDGET="K=10,000" \
+  CMP_VARIANTS="bidir_random_k10000_v2:S2S-bidir (random-perm, argmax);orig_3strategies_k10000_v2:Original S2S 3-strategies;orig_3strategies_rescue_k10000_v2:Original S2S 3-strategies + rescue" \
 CMP_RNET_ROOT="$RNET" \
 CMP_VIENNA_ROOT="$DATA/eterna100_eval_k10k_vienna" \
 CMP_ETERNA_ROOT="$DATA/eterna100_eval_k10k_eternafold" \
