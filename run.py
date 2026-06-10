@@ -27,6 +27,36 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 
+# --- Optional Vienna-reward path for per-target test-time fine-tuning ---------
+# When FT_REWARD=vienna, the play loop scores designs by folding each generated
+# sequence with ViennaRNA MFE instead of RibonanzaNet-SS. env.get_reward is
+# oracle-independent (needs only a base-pair list), so ONLY the fold step
+# changes. FT_REWARD unset/"rnet" => original RNet path, unchanged. (configs 2/4.)
+_FT_VIENNA = os.environ.get("FT_REWARD", "rnet").lower() == "vienna"
+
+
+def _vienna_bps_batch(predicted_sequences, env):
+    """Fold each generated sequence with ViennaRNA MFE -> base-pair list.
+
+    env.index_to_nt maps token ids (0..3) -> ACGU. Returns one bp-list per
+    sequence (the form env.get_reward consumes). Pure-CPU; never touches RNet.
+    """
+    import RNA
+    import sys as _sys
+    _REPO = os.path.dirname(os.path.abspath(__file__))
+    if _REPO not in _sys.path:
+        _sys.path.insert(0, _REPO)
+    from evaluation.fold_oracles import dotbracket_to_bps
+
+    idx_to_nt = env.index_to_nt
+    out = []
+    for s in predicted_sequences:
+        seq = "".join(idx_to_nt.get(int(t), "A") for t in s.cpu().numpy())
+        db, _mfe = RNA.fold(seq)
+        out.append(list(dotbracket_to_bps(db)))
+    return out
+
+
 # Configuration Class
 @dataclass
 class TrainingConfig:
@@ -455,13 +485,16 @@ def play(model, env, dataloader, accelerator, episode, save_data=True, p=0.0,
                     model_for_decode, src, ct_matrix, PC,
                     perm=perm, mode="epsilon_argmax", p=p,
                 )
-                bpps = env.SS_model(predicted_sequences).sigmoid().detach().cpu().numpy()
+                if not _FT_VIENNA:
+                    bpps = env.SS_model(predicted_sequences).sigmoid().detach().cpu().numpy()
 
-        structures, bps = [], []
-        for bpp in bpps:
-            structure, bp = _hungarian(mask_diagonal(bpp), theta=0.5, min_len_helix=1)
-            structures.append(structure)
-            bps.append(bp)
+        if _FT_VIENNA:
+            bps = _vienna_bps_batch(predicted_sequences, env)
+        else:
+            bps = []
+            for bpp in bpps:
+                _structure, bp = _hungarian(mask_diagonal(bpp), theta=0.5, min_len_helix=1)
+                bps.append(bp)
 
         target_structures = [detokenize_dot_bracket(s.cpu().numpy()) for s in src]
         rewards = [env.get_reward(bp, s) for bp, s in zip(bps, target_structures)]

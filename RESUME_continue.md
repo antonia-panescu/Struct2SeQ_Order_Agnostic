@@ -30,8 +30,14 @@ nvidia-smi -i 1,2,5,6
 ## Resilience
 - Detached via `setsid` (survives SSH/session end). 4 GPUs = 1,2,5,6.
 - Per-episode resume: on relaunch loads the highest `policy_network_{e}.pt` and
-  continues; per-epoch + mid-epoch (every 5000 steps) checkpoints too. Play
-  data.pt skip-if-exists. Bounded resume-retry loop in `run_continue.sh`.
+  continues; per-epoch + mid-epoch (every 5000 steps) checkpoints too. Bounded
+  resume-retry loop in `run_continue.sh`.
+- **Play replays in FULL on a mid-play crash** (fix 2026-06-03, run_continue.py
+  ~L324): play is skipped on resume only if a `tmp/episode{e}/PLAY_COMPLETE`
+  marker exists (written after play() finishes). A crash mid-play leaves no
+  marker → the partial `data.pt` are discarded and play is redone in full, so an
+  episode never trains on a partial buffer. (Episode 10 predates the fix and was
+  trained on a partial buffer after the 2026-06-02 21:35 preemption — accepted.)
 - If `/scratch` play data is ever lost but root checkpoints survive, resume just
   regenerates play data for the unfinished episode and skips ahead — no real loss.
 
