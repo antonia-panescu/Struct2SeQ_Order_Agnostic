@@ -1,208 +1,182 @@
-# Struct2SeQ-bidir (RL)
+# Struct2SeQ Order-Agnostic
 
-Bidirectional / order-agnostic Q-learning extension of the Struct2SeQ
-RNA inverse-folding model. Given a target dot-bracket secondary
-structure, the policy network learns to fill nucleotides in any order
-(not only left-to-right) using a Q-learning objective, with rewards
-computed from a RibonanzaNet-SS oracle.
+Order-agnostic reinforcement learning for RNA inverse folding. This code extends
+Struct2SeQ-style sequence design so the decoder can fill RNA positions in a
+random order instead of only left to right. The model is trained with a
+Q-learning objective and scored with a RibonanzaNet-SS structure oracle.
 
-This repository contains the training code, evaluation scripts for the
-Eterna100 + OpenKnot 7 benchmarks, paper figures for the 100-mer and
-240-mer experiments, and the ICML 2026 paper sources.
+## Repository Contents
 
-> **Status (2026-05-26):** active research code. The training and
-> evaluation paths used in the paper run end-to-end on the Brev / Azure
-> DGX setup. Some evaluation scripts still contain machine-specific
-> paths — see *Hardcoded paths* below.
+```text
+.
+├── run.py                  Training entry point
+├── Encoder_Decoder.py      Encoder and order-aware decoder architecture
+├── Functions.py            Decoding, sampling, and sequence utilities
+├── Dataset.py              Dataset and dot-bracket tokenization utilities
+├── Env.py                  RibonanzaNet-based reward environment
+├── Network_test10.py       RibonanzaNet architecture used by the oracle
+├── default_config.yaml     Small default training configuration
+├── config_brev_8gpu.yaml   Paper-scale 240 nt configuration
+├── data/eterna100/         Small Eterna100 benchmark target files
+├── evaluation/             Public evaluation utilities
+└── tests/                  Lightweight import/config/dropout tests
+```
 
+Large checkpoints, generated results, run logs, paper drafts, and local research
+notes are intentionally excluded from Git. They can remain in your local working
+tree without being pushed.
 
 ## Installation
 
-Tested with Python 3.10–3.11 and CUDA 12.x on Linux (Brev A100, Azure
-DGX, plus assorted local boxes).
+The code has been tested on Linux with Python 3.10-3.11, PyTorch 2.x, and CUDA.
 
 ```bash
-git clone git@github.com:antonia-panescu/Struct2SeQ_bidir.git
-cd Struct2SeQ_bidir
+git clone git@github.com:antonia-panescu/Struct2SeQ_Order_Agnostic.git
+cd Struct2SeQ_Order_Agnostic
 
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 pip install git+https://github.com/DasLab/arnie.git
+```
 
-# arnie needs a config pointing at LinearPartition + a TMP directory.
-# The training launcher writes one for you; for one-off scripts:
-python make_arnie_dummy.py        # writes ./arnie_file.txt
+`arnie` expects an `ARNIEFILE`. For the RibonanzaNet-only training/evaluation
+paths, a minimal local config is sufficient:
+
+```bash
+python make_arnie_dummy.py
 export ARNIEFILE="$(pwd)/arnie_file.txt"
 ```
 
-## Pretrained weights
+## Required Weights
 
-None of the model checkpoints or oracle weights are checked into git
-(each is 100–120 MB). Download them from Google Drive and place them
-as below.
+The repository does not track model checkpoints or oracle weights. Place the
+RibonanzaNet weights in a directory and point `RIBONANZA_WEIGHTS_DIR` at it:
 
-## TO ADD ##
-
-### RibonanzaNet oracle (required for training and eval)
-
-`Env.py` loads two RibonanzaNet checkpoints from a **sibling**
-`weights/` directory at `../weights/` relative to this repo:
-
+```text
+weights/
+├── RibonanzaNet-SS.pt
+└── RibonanzaNet.pt
 ```
-<parent>/
-├── struct2seq_bidir_rl/        ← this repo
-└── weights/
-    ├── RibonanzaNet-SS.pt      ← used by finetuned_RibonanzaNet (oracle reward)
-    └── RibonanzaNet.pt         ← used for reactivity scoring
-```
-
-The original `RibonanzaNet*.pt` files are published by the DasLab
-RibonanzaNet release. If they live elsewhere on your machine, symlink:
 
 ```bash
-mkdir -p ../weights
-ln -s /abs/path/to/RibonanzaNet-SS.pt ../weights/RibonanzaNet-SS.pt
-ln -s /abs/path/to/RibonanzaNet.pt    ../weights/RibonanzaNet.pt
+export RIBONANZA_WEIGHTS_DIR=/path/to/weights
 ```
 
-### Struct2SeQ-bidir model checkpoints
+If `RIBONANZA_WEIGHTS_DIR` is not set, `Env.py` looks for these files in
+`../weights` relative to the repository root.
 
-Place these at the **repo root** (next to `run.py`):
-
-| File                       | Size   | Purpose                                          |
-|----------------------------|--------|--------------------------------------------------|
-| `Struct2SeQ.pt`            | 119 MB | Original L→R baseline (paper comparison + init)  |
-| `best_policy_network.pt`   | 112 MB | Best test-reward checkpoint from our RL training |
-| `policy_network_{N}.pt`    | 112 MB | Per-episode checkpoints (optional, for resume)   |
-
-Google Drive (TODO — paste shared link here once uploaded):
-
-```
-RibonanzaNet weights:        <Google Drive link>
-Struct2SeQ.pt:               <Google Drive link>
-best_policy_network.pt:      <Google Drive link>
-policy_network_{N}.pt set:   <Google Drive link>
-```
-
-Quick fetch with `gdown` once links are available:
-
-```bash
-pip install gdown
-gdown --id <FILE_ID> -O ./Struct2SeQ.pt
-gdown --id <FILE_ID> -O ./best_policy_network.pt
-mkdir -p ../weights
-gdown --id <FILE_ID> -O ../weights/RibonanzaNet-SS.pt
-gdown --id <FILE_ID> -O ../weights/RibonanzaNet.pt
-```
+For checkpointed Struct2SeQ models, place files such as `Struct2SeQ.pt` or
+`best_policy_network.pt` at the repository root, or pass their paths explicitly
+with `--checkpoint`.
 
 ## Data
 
-Two data resources are referenced:
+Training expects a CSV with a `structure` column containing dot-bracket targets.
+The paper-scale configuration used 240 nt structures. Large training CSVs are
+not tracked by Git.
 
-- `top2M.csv` (~515 MB): top-2 M 240-mer windows from Shujun's genome
-  scan with OK-filtering. **This is the training set used to produce
-  the paper checkpoints.** It is not committed (see `.gitignore`).
-  Copy it to the project root or `$HOME`; `launch_brev.sh` looks in
-  both.
-- `data/eterna100/`: Eterna100 puzzle targets (committed, small).
-- `data/eterna_training_dump/eterna_puzzles_20250227.csv`: 44 MB
-  reference dump of Eterna puzzles (not committed). See
-  `data/README.md` for provenance and how to regenerate.
-
-The 100-mer and 240-mer master result tables live in
-`paper_figs/MASTER_100mer.csv` / `MASTER_240mer.csv`.
+The committed Eterna100 files under `data/eterna100/` are small benchmark target
+files used by the evaluation scripts.
 
 ## Training
 
-```bash
-# 4-GPU portable launcher (Brev / Azure DGX; auto-detects top2M.csv).
-bash launch_brev.sh --from-scratch
-# or, fine-tune the published Struct2SeQ checkpoint:
-bash launch_brev.sh --from-pretrained ./Struct2SeQ.pt
+Single-node multi-GPU training:
 
-# Manual single-machine invocation:
+```bash
 accelerate launch --mixed_precision bf16 --num_processes 4 \
     run.py \
     --config config_brev_8gpu.yaml \
-    --target_structure_file ./top2M.csv \
+    --target_structure_file /path/to/train_targets.csv \
     --order-agnostic
 ```
 
-Useful flags (full list in `run.py`):
+Fine-tune from an existing checkpoint:
 
-| Flag                       | Meaning                                       |
-|----------------------------|-----------------------------------------------|
-| `--order-agnostic`         | Train the bidirectional / random-order policy |
-| `--checkpoint PATH`        | Initialise from existing weights              |
-| `--skip-play-episode0`     | Skip exploratory play in episode 0            |
-| `--save-every-steps N`     | Mid-epoch checkpointing cadence               |
-| `--config PATH`            | YAML hyper-parameter override                 |
+```bash
+accelerate launch --mixed_precision bf16 --num_processes 4 \
+    run.py \
+    --config config_brev_8gpu.yaml \
+    --target_structure_file /path/to/train_targets.csv \
+    --order-agnostic \
+    --checkpoint /path/to/Struct2SeQ.pt
+```
 
-Outputs land in the project root:
+Useful flags:
 
-- `policy_network.pt` / `policy_network_{episode}.pt` — checkpoints
-- `best_policy_network.pt` — best test reward so far
-- `stats/episode*.csv` — per-episode reward curves
-- `rewards_log.csv` — train/test reward summary
-- `logs/` and `wandb/` — Accelerate / W&B logs
+| Flag | Description |
+| --- | --- |
+| `--order-agnostic` | Train with random RNA-position decoding order. |
+| `--checkpoint PATH` | Initialize from an existing policy checkpoint. |
+| `--config PATH` | Load training hyperparameters from YAML. |
+| `--start-episode N` | Resume training from episode `N`. |
+| `--skip-train` | Skip training for the starting episode and run test play. |
+| `--wandb` | Enable Weights & Biases logging. |
+| `--wandb-project NAME` | Set the W&B project name. |
+| `--wandb-entity NAME` | Set the W&B entity or team. |
+
+Install `wandb` separately before using the W&B flags.
+
+Training writes checkpoints and metrics to local files such as:
+
+```text
+policy_network.pt
+policy_network_{episode}.pt
+best_policy_network.pt
+final_policy_network.pt
+logs/
+stats/
+rewards_log.csv
+runtime.txt
+```
+
+These outputs are ignored by Git.
 
 ## Evaluation
 
-The paper benchmarks live under `evaluation/`. The Eterna100 driver:
+Generic checkpoint evaluation on a CSV of target structures:
 
 ```bash
-cd evaluation
-bash run_eterna100_benchmark.sh ./eterna100_logs/run.log
-# or for partial / parallel reruns:
-bash run_eterna100_remaining_parallel.sh
+python evaluation/run_eval.py \
+    --checkpoint best_policy_network.pt \
+    --config config_brev_8gpu.yaml \
+    --test-csv data/eterna100/eterna100_targets_v2.csv \
+    --experiment order_agnostic_eval \
+    --label best \
+    --decoding-order permuted
 ```
 
-OpenKnot 7 (240-mer in-painting + best-of-N) lives in
-`evaluation/run_ok7_eval.py` and the `launch_ok7_*.sh` wrappers.
+`evaluation/run_eval.py` supports `--decoding-order permuted` for random
+per-sample decoding orders and `--decoding-order l2r` for a left-to-right
+ablation.
 
-### Hardcoded paths
+OpenKnot-style evaluation is available through `evaluation/run_ok7_eval.py`.
+That path also requires the OpenKnotScorePipeline source and target CSVs:
 
-A number of evaluation scripts (`evaluation/run_eterna100_*.sh`,
-`evaluation/launch_ok7_*.sh`, `evaluation/run_ok7_eval.py`,
-`paper_figs/analyze_results_*.py`, `evaluation/motif_extraction.py`)
-still contain absolute paths to this machine — `/home/nvidia/...`,
-`/home/nvidia/haiwen/antonia/OpenKnotAIDesignData/`,
-`/home/nvidia/miniconda3/envs/struct2seq/`. Before running them on a
-new machine, set the relevant variables at the top of each script or
-point the equivalent env vars (`OPENKNOT_DATA`, `OPENKNOT_TARGETS_R3`,
-`OPENKNOT_TARGETS_R4`, `OPENKNOTSCORE_SRC`, `STRUCT2SEQ_ROOT`).
+```bash
+export OPENKNOTSCORE_SRC=/path/to/OpenKnotScorePipeline/src
+
+accelerate launch --mixed_precision bf16 --num_processes 4 \
+    evaluation/run_ok7_eval.py \
+    --targets-csv /path/to/openknot_targets.csv \
+    --out-dir results/ok7_eval/bidir_random \
+    --model bidir \
+    --inference-mode random \
+    --k-samples 1000
+```
 
 ## Tests
 
-Minimal CPU smoke tests (no GPU, no data required):
-
 ```bash
 pip install pytest
-pytest tests/ -q
+python -m pytest tests -q
 ```
 
-## Known limitations / TODOs
+Some import tests are skipped automatically when optional external packages such
+as `arnie` are not installed.
 
-- Evaluation scripts still need fully env-driven path resolution.
-- No formal package layout (modules live at the top level).
-  Refactoring into a `struct2seq/` package would be useful but is out
-  of scope for this cleanup pass.
-- `arnie_file.txt` is generated per machine and is not committed.
-- The `Struct2SeQ.pt` baseline checkpoint, our trained
-  `*_policy_network.pt` files, and `RibonanzaNet*.pt` weights are not
-  in this repository — see *Pretrained weights*.
+## Citation
 
-## Reproducing the paper
-
-The 100-mer / 240-mer numbers in the ICML 2026 submission come from:
-
-- Headline run: `MASTER_240mer.csv` row `bidir + best-of-N (K=1000)`
-- Apples-to-apples: `PAPER_TABLE_240mer.csv`
-- Sample efficiency: `paper_figs/best_of_n_240mer.csv`
-
-See `icml2026/paper.tex` for the final manuscript.
-
-## Citing / contact
-
-This repository is research code under active development. Until a
-release is tagged, cite the ICML 2026 GenBio submission and contact
-the authors before reusing in downstream work.
+If you use this repository, please cite the accompanying ICML 2026 paper. The
+full citation will be added here once the camera-ready metadata is finalized.

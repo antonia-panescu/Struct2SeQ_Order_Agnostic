@@ -19,16 +19,43 @@ run_*.txt
 slurm-*.out
 rewards_log.csv
 
-# --- Eval run outputs (per-run dirs are large; the script + lab_notebook
-# already capture what we need, and the JSON summaries can be re-derived
-# from per_sample.csv anyway). ---------------------------------------------
+# --- Eval run outputs ------------------------------------------------------
 evaluation/2026*__*/
 evaluation/MERGED__*/
 evaluation/_*.log
 evaluation/_done_so_far.csv
 evaluation/_launch_*.log
+evaluation/eterna100_logs/
 
-# --- LaTeX build artefacts (icml2026/ keeps .tex/.bib/.sty/.bst/.pdf) -----
+# --- Local research notes, reports, and paper artifacts --------------------
+RESUME_*.md
+archive/
+docs/
+ideas/
+eterna100_algorithms_wiki/
+eterna100_*.md
+icml2026/
+paper_figs/
+results/
+data/README.md
+data/eterna_training_dump/
+
+# Lab-specific launch/evaluation wrappers kept locally only.
+launch_brev.sh
+evaluation/*.sh
+evaluation/bench_train_speed.py
+evaluation/build_240mer_master.py
+evaluation/check_v2_reference_folds.py
+evaluation/motif_extraction.py
+evaluation/refold_score.py
+evaluation/run_bidir_rescue.py
+evaluation/run_rescue.py
+evaluation/run_rescue_oracle.py
+evaluation/smoke_new_arch.py
+evaluation/write_eterna100_report.py
+evaluation/write_oracle_comparison.py
+
+# --- LaTeX build artefacts -------------------------------------------------
 *.aux
 *.bbl
 *.blg
@@ -60,9 +87,6 @@ dist/
 *.swp
 *.swo
 
-# --- Claude per-project state ---------------------------------------------
-.claude/
-
 # --- Arnie config (path is per-machine) -----------------------------------
 arnie_file.txt
 
@@ -70,11 +94,6 @@ arnie_file.txt
 .env
 .envrc
 
-# --- Private research notes (kept on local disk, not published) -----------
-paper/
-lab_notebook/
-
 # --- OS junk ---------------------------------------------------------------
 .DS_Store
 Thumbs.db
-results/

@@ -1,8 +1,7 @@
 """OpenKnot 7 (100mer) evaluation suite.
 
 Multi-GPU eval via accelerate. Generates K samples per puzzle for the 20
-OK7 100mer puzzles in
-``/home/nvidia/haiwen/antonia/OpenKnotAIDesignData/Targets/Round3_targets.csv``.
+OK7 100mer puzzles supplied with ``--targets-csv``.
 Scores each generated sequence with:
   - RibonanzaNet-SS  -> predicted dot-bracket -> Jaccard vs target
   - RibonanzaNet     -> predicted SHAPE -> OK score
@@ -23,8 +22,10 @@ Per-rank checkpointing: writes append-mode CSV + batches_done.txt after
 every batch; resume on restart fast-skips completed batches.
 
 Example:
+  export OPENKNOTSCORE_SRC=/path/to/OpenKnotScorePipeline/src
   CUDA_VISIBLE_DEVICES=0,1,3,4 accelerate launch --num_processes 4 \\
       evaluation/run_ok7_eval.py \\
+      --targets-csv /path/to/Round3_targets.csv \\
       --model bidir --inference-mode random --k-samples 1000 \\
       --out-dir results/ok7_eval/bidir_random/
 """
@@ -51,11 +52,11 @@ from tqdm import tqdm
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# OpenKnotScorePipeline scoring functions (pure-Python; depend only on
-# arnie.utils which is already in the conda env per Env.py:10).
-OKS_SRC = Path("/home/nvidia/haiwen/antonia/OpenKnotScorePipeline/src")
-if str(OKS_SRC) not in sys.path:
-    sys.path.insert(0, str(OKS_SRC))
+OKS_SRC = os.environ.get("OPENKNOTSCORE_SRC")
+if OKS_SRC:
+    oks_path = Path(OKS_SRC).expanduser().resolve()
+    if str(oks_path) not in sys.path:
+        sys.path.insert(0, str(oks_path))
 
 from Dataset import tokenize_dot_bracket, detokenize_dot_bracket  # noqa: E402
 from Env import DQN_env, mask_diagonal  # noqa: E402
@@ -65,10 +66,16 @@ from Functions import (  # noqa: E402
     generate_sequence_batched,
 )
 from arnie.pk_predictors import _hungarian  # noqa: E402
-from openknotscore.pipeline.scoring import (  # noqa: E402
-    calculateCrossedPairQualityScore,
-    calculateEternaClassicScore,
-)
+try:
+    from openknotscore.pipeline.scoring import (  # noqa: E402
+        calculateCrossedPairQualityScore,
+        calculateEternaClassicScore,
+    )
+except ImportError as exc:
+    raise ImportError(
+        "OpenKnotScorePipeline is required for OK7 scoring. Install it or set "
+        "OPENKNOTSCORE_SRC=/path/to/OpenKnotScorePipeline/src."
+    ) from exc
 from evaluation.run_eval import build_model  # noqa: E402
 from run import TrainingConfig  # noqa: E402
 
@@ -90,8 +97,8 @@ def parse_args() -> argparse.Namespace:
               "supported here. The original Struct2SeQ.pt must be evaluated "
               "from the Struct2SeQ_training/ codebase since loading its "
               "LSTM-PE weights into the new arch would zero out positional "
-              "info and not be a faithful baseline. We compare against "
-              "Shujun's published per-puzzle numbers (Fig 4 / Fig 7) directly."),
+              "info and not be a faithful baseline. Compare against published "
+              "per-puzzle baseline numbers directly."),
     )
     p.add_argument("--checkpoint", type=str, default=None,
                    help="Override default checkpoint path (default: best_policy_network.pt).")
@@ -107,13 +114,10 @@ def parse_args() -> argparse.Namespace:
         choices=["scatter", "structural", "structural_redesign"],
         default="scatter",
         help=("scatter = uniform-random K-of-WT (legacy); "
-              "structural = pick one principled motif and FIX it to WT, "
-              "redesign the surrounding scaffold (motif-preservation, "
-              "Framing A — RFdiffusion / ProteinMPNN analog); "
-              "structural_redesign = pick one principled motif and fix "
-              "EVERYTHING ELSE to WT, redesign just the motif itself "
-              "(motif-redesign, Framing B — local mutagenesis around a "
-              "fixed scaffold). Only used when --inference-mode is inpaint."),
+              "structural = fix one structural motif to WT and redesign "
+              "the surrounding scaffold; structural_redesign = keep the "
+              "scaffold fixed and redesign only the motif. Only used when "
+              "--inference-mode is inpaint."),
     )
     p.add_argument(
         "--max-motif-fraction", type=float, default=0.5,
@@ -126,9 +130,9 @@ def parse_args() -> argparse.Namespace:
         default="argmax",
         help=("argmax (default): pure greedy argmax, no token-level "
               "sampling; qsoftmax: multinomial sampling from softmax "
-              "over Q-values (matches Shujun's strategy 2); epsilon: "
+              "over Q-values (matches the published softmax strategy); epsilon: "
               "argmax with p=0.1 of uniform-among-allowed-bases sampling "
-              "(matches Shujun's strategy 1). Applies to all "
+              "(matches the published epsilon strategy). Applies to all "
               "inference modes that use generate_permuted."),
     )
     p.add_argument("--sampling-p", type=float, default=0.1,
@@ -142,13 +146,11 @@ def parse_args() -> argparse.Namespace:
               "positions first then free positions (random within "
               "each); identity = strict L→R order. With identity + "
               "fixed=motif this reproduces AR teacher-forced motif "
-              "preservation on our checkpoint (same checkpoint as "
+              "preservation on the trained checkpoint (same checkpoint as "
               "random-perm, only decoding paradigm differs)."),
     )
-    p.add_argument(
-        "--targets-csv", type=str,
-        default="/home/nvidia/haiwen/antonia/OpenKnotAIDesignData/Targets/Round3_targets.csv",
-    )
+    p.add_argument("--targets-csv", type=str, required=True,
+                   help="CSV containing OpenKnot target structures.")
     p.add_argument("--k-samples", type=int, default=1000,
                    help="Samples per puzzle.")
     p.add_argument("--batch-size", type=int, default=32)

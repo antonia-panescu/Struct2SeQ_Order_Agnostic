@@ -12,7 +12,6 @@ from torch import einsum
 
 
 def init_weights(m):
-    # print(m)
     if m is not None and isinstance(m, nn.Linear):
         pass
         # torch.nn.init.xavier_uniform_(m.weight)
@@ -73,46 +72,26 @@ class ScaledDotProductAttention(nn.Module):
 
     def forward(self, q, k, v, mask=None, attn_mask=None):
 
-        # print(self.gamma)
         attn = torch.matmul(q, k.transpose(2, 3)) / self.temperature
         # to_plot=attn[0,0].detach().cpu().numpy()
         # plt.imshow(to_plot)
         # plt.show()
-        # exit()
 
-        # exit()
         if mask is not None:
             # attn = attn.masked_fill(mask == 0, -1e9)
             # attn = attn#*self.gamma
-            # print(attn.shape)
-            # print(mask.shape)
-            # exit()
-            # print(attn.shape)
-            # print(mask.shape)
-            # exit()
-            # print(attn.shape)
-            # print(mask.shape)
-            # exit()
 
             attn = attn + mask
-            # print(attn.shape)
-            # exit()
 
         # if attn_mask is not None:
-        #     # print(attn.shape)
-        #     # print(attn_mask.shape)
         #     # attn = attn+attn_mask
         #     #attn=attn.float().masked_fill(attn_mask == 0, float('-inf'))
         #     #pass
         #     for i in range(len(attn_mask)):
         #         attn_mask[i,0]=attn_mask[i,0].fill_diagonal_(1)
-        #     # print(attn_mask.shape)
-        #     # exit()
-        #     #print(torch.diagonal(attn_mask).mean())
         #     attn=attn.float().masked_fill(attn_mask == 0, float('-1e-9'))
 
         attn = self.dropout(F.softmax(attn, dim=-1))
-        # print(attn[0,0])
         # to_plot=attn[0,0].detach().cpu().numpy()
         # with open('mat.txt','w+') as f:
         #     for vector in to_plot:
@@ -121,7 +100,6 @@ class ScaledDotProductAttention(nn.Module):
         #         f.write('\n')
         # plt.imshow(to_plot)
         # plt.show()
-        # exit()
         output = torch.matmul(attn, v)
 
         return output, attn
@@ -166,9 +144,6 @@ class MultiHeadAttention(nn.Module):
         if mask is not None:
             mask = mask  # For head axis broadcasting
 
-        # print(q.shape)
-        # print(k.shape)
-        # print(v.shape)
         if src_mask is not None:
             src_mask = src_mask[:, : q.shape[2]].unsqueeze(-1).float()
 
@@ -178,12 +153,9 @@ class MultiHeadAttention(nn.Module):
             q, attn = self.attention(q, k, v, mask=mask, attn_mask=attn_mask)
         else:
             q, attn = self.attention(q, k, v, mask=mask)
-        # print(attn.shape)
         # Transpose to move the head dimension back: b x lq x n x dv
         # Combine the last two dimensions to concatenate all the heads together: b x lq x (n*dv)
         q = q.transpose(1, 2).contiguous().view(sz_b, len_q, -1)
-        # print(q.shape)
-        # exit()
         q = self.dropout(self.fc(q))
         q += residual
 
@@ -282,17 +254,12 @@ class ConvTransformerEncoderLayer(nn.Module):
         # src = src*src_mask.float().unsqueeze(-1)
 
         res = src
-        # print(self.norm3(self.conv(src.permute(0,2,1)).permute(0,2,1)).shape)
-        # exit()
         src = src + self.conv(src.permute(0, 2, 1)).permute(0, 2, 1)
         src = self.norm3(src)
-        # print(src.shape)
-        # exit()
 
         pairwise_bias = self.pairwise2heads(
             self.pairwise_norm(pairwise_features)
         ).permute(0, 3, 1, 2)
-        # print(src.shape)
         src2, attention_weights = self.self_attn(
             src, src, src, mask=pairwise_bias, src_mask=src_mask
         )
@@ -303,10 +270,6 @@ class ConvTransformerEncoderLayer(nn.Module):
         src = src + self.dropout2(src2)
         src = self.norm2(src)
 
-        # print(src.shape)
-        # exit()
-        # print(src_mask)
-        # exit()
         if use_gradient_checkpoint:
             pairwise_features = pairwise_features + checkpoint.checkpoint(
                 self.custom(self.outer_product_mean), src
@@ -403,12 +366,10 @@ class relpos(nn.Module):
         res_id = torch.arange(L).to(src.device).unsqueeze(0)
         device = res_id.device
         bin_values = torch.arange(-8, 9, device=device)
-        # print((bin_values))
         d = res_id[:, :, None] - res_id[:, None, :]
         bdy = torch.tensor(8, device=device)
         d = torch.minimum(torch.maximum(-bdy, d), bdy)
         d_onehot = (d[..., None] == bin_values).float()
-        # print(d_onehot.sum(dim=-1).min())
         assert d_onehot.sum(dim=-1).min() == 1
         p = self.linear(d_onehot)
         return p
@@ -499,7 +460,6 @@ class RibonanzaNet(nn.Module):
                 k = 5
             else:
                 k = 1
-            # print(k)
             self.transformer_encoder.append(
                 ConvTransformerEncoderLayer(
                     d_model=config.ninp,
@@ -541,7 +501,6 @@ class RibonanzaNet(nn.Module):
         # spawn outer product
         # outer_product = torch.einsum('bid,bjc -> bijcd', src, src)
         # outer_product = rearrange(outer_product, 'b i j c d -> b i j (c d)')
-        # print(outer_product.shape)
         if self.use_gradient_checkpoint:
             pairwise_features = checkpoint.checkpoint(
                 self.custom(self.outer_product_mean), src
@@ -550,8 +509,6 @@ class RibonanzaNet(nn.Module):
         else:
             pairwise_features = self.outer_product_mean(src)
             pairwise_features = pairwise_features + self.pos_encoder(src)
-        # print(pairwise_features.shape)
-        # exit()
 
         attention_weights = []
         for i, layer in enumerate(self.transformer_encoder):
@@ -569,7 +526,6 @@ class RibonanzaNet(nn.Module):
                 use_gradient_checkpoint=self.use_gradient_checkpoint,
             )
 
-            # print(src.shape)
         output = self.decoder(src).squeeze(-1) + pairwise_features.mean() * 0
 
         if return_aw:
@@ -585,9 +541,7 @@ class RibonanzaNet(nn.Module):
         # spawn outer product
         # outer_product = torch.einsum('bid,bjc -> bijcd', src, src)
         # outer_product = rearrange(outer_product, 'b i j c d -> b i j (c d)')
-        # print(outer_product.shape)
         if self.use_gradient_checkpoint:
-            # print("using grad checkpointing")
             pairwise_features = checkpoint.checkpoint(
                 self.custom(self.outer_product_mean), src
             )
@@ -595,8 +549,6 @@ class RibonanzaNet(nn.Module):
         else:
             pairwise_features = self.outer_product_mean(src)
             pairwise_features = pairwise_features + self.pos_encoder(src)
-        # print(pairwise_features.shape)
-        # exit()
 
         attention_weights = []
         for i, layer in enumerate(self.transformer_encoder):
@@ -620,7 +572,6 @@ class RibonanzaNet(nn.Module):
                 return_aw=return_aw,
                 use_gradient_checkpoint=self.use_gradient_checkpoint,
             )
-            # print(src.shape)
         # output = self.decoder(src).squeeze(-1)+pairwise_features.mean()*0
 
         return src, pairwise_features
@@ -684,11 +635,8 @@ class TriangleAttention(nn.Module):
         logits = torch.einsum(eq_attn, q, k) / scale + b
         # plt.imshow(attn_mask[0,0,:,:,0])
         # plt.show()
-        # exit()
         logits = logits.masked_fill(attn_mask == -1, float("-1e-9"))
         attn = logits.softmax(softmax_dim)
-        # print(attn.shape)
-        # print(v.shape)
         out = torch.einsum(eq_multi, attn, v)
         out = gate * rearrange(out, "b i j h d-> b i j (h d)")
         z_ = self.to_out(out)
@@ -756,4 +704,3 @@ if __name__ == "__main__":
     # src_mask=torch.ones(6,16)
     # src_mask[:,12:16]=0
     # out=tri_attention(dummy, src_mask, )
-    # print(out.shape)

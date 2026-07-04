@@ -10,8 +10,8 @@ einops
 matplotlib
 scikit-learn
 
-# Logging
-wandb
+# Optional logging for `run.py --wandb`
+# wandb
 
 # Optimizer
 pytorch-ranger

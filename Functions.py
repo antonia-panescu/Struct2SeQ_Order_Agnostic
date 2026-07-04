@@ -1,6 +1,6 @@
 import csv
 import os
-from os import path
+from pathlib import Path
 
 import numpy as np
 import polars as pl
@@ -41,11 +41,8 @@ class LinearWarmupScheduler(_LRScheduler):
         return [self.final_lr * progress for _ in self.base_lrs]
 
 
-# create dummy arnie config
-# with open('arnie_file.txt','w+') as f:
-#     f.write("linearpartition: . \nTMP: /tmp")
-
-os.environ["ARNIEFILE"] = "../arnie_file.txt"
+PROJECT_ROOT = Path(__file__).resolve().parent
+os.environ.setdefault("ARNIEFILE", str(PROJECT_ROOT / "arnie_file.txt"))
 
 from arnie.pk_predictors import _hungarian
 
@@ -146,7 +143,6 @@ def generate_sequence(model, src, target_correspondence, start_token=4, p=0.1):
             paired_encoding = (src == 0).long()
             out = model.decoder(tgt, paired_encoding, memory, tgt_mask=tgt_mask)
             values = out[0, -1]
-            # print(values)
             # break
             # Apply base pair constraints
             mask = create_base_pair_mask(position, target_correspondence, outputs)
@@ -194,7 +190,6 @@ def generate_sequence_norules(model, src, target_correspondence, start_token=4, 
             paired_encoding = (src == 0).long()
             out = model.decoder(tgt, paired_encoding, memory, tgt_mask=tgt_mask)
             values = out[0, -1]
-            # print(values)
             # break
             # Apply base pair constraints
             # mask = create_base_pair_mask(position, target_correspondence, outputs)
@@ -586,11 +581,6 @@ def generate_sequence_batched(
             next_tokens = torch.where(
                 random_sample.unsqueeze(1), sampled_tokens, max_tokens
             )
-            # print(values.shape)
-            # print(next_tokens.shape)
-            # #exit()
-            # print(values.gather(-1, next_tokens).shape)
-            # exit()
             total_values = total_values + values.gather(-1, next_tokens).squeeze(-1)
 
             outputs = torch.cat([outputs, next_tokens], dim=1)
@@ -660,11 +650,6 @@ def generate_sequence_batched_sample(
             next_tokens = torch.where(
                 random_sample.unsqueeze(1), sampled_tokens, max_tokens
             )
-            # print(values.shape)
-            # print(next_tokens.shape)
-            # #exit()
-            # print(values.gather(-1, next_tokens).shape)
-            # exit()
             total_values = total_values + values.gather(-1, next_tokens).squeeze(-1)
 
             outputs = torch.cat([outputs, next_tokens], dim=1)
@@ -731,11 +716,6 @@ def generate_sequence_batched_accelerate(
             next_tokens = torch.where(
                 random_sample.unsqueeze(1), sampled_tokens, max_tokens
             )
-            # print(values.shape)
-            # print(next_tokens.shape)
-            # #exit()
-            # print(values.gather(-1, next_tokens).shape)
-            # exit()
             total_values = total_values + values.gather(-1, next_tokens).squeeze(-1)
 
             outputs = torch.cat([outputs, next_tokens], dim=1)
@@ -778,8 +758,6 @@ def create_base_pair_mask(position, target_correspondence, outputs, A_cnt, max_l
         if mask.sum() == 4:
             mask[nt] = False
 
-    # print(A_cnt)
-    # print(max_len)
     if A_cnt > max_len * 0.4:
         mask[0] = True
         if mask.sum() == 4:
@@ -794,10 +772,6 @@ def create_base_pair_mask_batched(
     batch_size = outputs.shape[0]
     masks = []
 
-    # print(len(target_correspondence))
-    # print(len(outputs))
-    # print(len(A_cnt))
-    # exit()
     for i in range(batch_size):
         mask = create_base_pair_mask(
             position, target_correspondence[i], outputs[i], A_cnt[i], max_len
@@ -825,8 +799,6 @@ def generate_sequence_topk(
     with torch.no_grad():
         memory = model.encoder(src, ct_matrix)
         _, L, C = memory.shape
-        # print(L,C)
-        # exit()
         tgt = torch.full((1, 1), start_token, dtype=torch.long, device=src.device)
         candidates = [
             {"sequence": tgt[0], "previous_value": 0.0, "logits": 0.0, "A_cnt": 0.0}
@@ -837,8 +809,6 @@ def generate_sequence_topk(
         for position in range(max_len):
             # Stack all candidate sequences
             tgt = torch.stack([c["sequence"] for c in candidates])
-            # print(tgt.shape)
-            # exit()
             cumulative_logits = torch.tensor(
                 [c["logits"] for c in candidates], device=src.device
             )
@@ -853,8 +823,6 @@ def generate_sequence_topk(
             # tgt_mask = tgt_mask.unsqueeze(0).expand(tgt.size(0), -1, -1)
 
             # Expand src and memory for batch processing
-            # print(src.shape)
-            # print(tgt.shape)
             src_expanded = src.expand(tgt.size(0), -1)
             memory_expanded = memory.expand(tgt.size(0), L, C)
             paired_encoding = (src_expanded == 0).long()
@@ -863,8 +831,6 @@ def generate_sequence_topk(
             out = model.decoder(
                 tgt, paired_encoding, memory_expanded, tgt_mask=tgt_mask
             )
-            # print(out.shape)
-            # exit()
             values = out[:, -1, :]
 
             # Apply base pair constraints
@@ -874,16 +840,12 @@ def generate_sequence_topk(
             )
             masked_values = values.masked_fill(mask, float("-inf"))
 
-            # print(masked_values.shape)
-            # exit()
 
             # Consider all 4 RNA nucleotides for all candidates
             # new_logits = masked_values + cumulative_logits.unsqueeze(1)
             # top_values, top_indices = torch.topk(new_logits.view(-1), k)
 
             # Create new candidates
-            # print(candidates)
-            # exit()
             new_candidates = []
             for i in range(len(candidates)):
                 # for value, index in zip(top_values, top_indices):
@@ -912,15 +874,8 @@ def generate_sequence_topk(
             candidates = sorted(
                 new_candidates, key=lambda x: x["logits"], reverse=True
             )[:k]
-            # print(k)
-            # print(candidates)
-            # exit()
-        #     print(len(candidates))
-        # exit()
         # Stack all final candidate sequences
         top_k_sequences = torch.stack([c["sequence"] for c in candidates])
-    # print(top_k_sequences.shape)
-    # exit()
     return top_k_sequences[:, 1:]  # Remove start token and return k x L tensor
 
 
@@ -959,9 +914,6 @@ def get_rescue_sequences(target_dbn, design_dbn, design_sequence):
     # missing_bps.append((30,31))
     # extra_bps.append((2,32))
 
-    # print(missing_bps)
-    # print(extra_bps)
-    # exit()
 
     if (len(missing_bps) + len(extra_bps)) > 3:
         return []

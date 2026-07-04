@@ -134,8 +134,6 @@ class Encoder(nn.Module):
         src = self.conv(src.permute(0, 2, 1)).permute(0, 2, 1)
         src = self.norm(src + res)
         src = self.gconv(src, ct_matrix)
-        # print(src.shape)
-        # exit()
 
         return self.transformer_encoder(
             src, mask=src_mask, src_key_padding_mask=src_key_padding_mask
@@ -274,12 +272,10 @@ class OptimizedTransformerDecoder(nn.Module):
             ]
         )
         # self.norm = nn.LayerNorm(d_model)
-        # NOTE: previous architecture had nn.LSTM positional encoder + CausalConv1d here.
-        # Both are intrinsically L→R operators that produce nonsense step-order
-        # representations under random-permutation decoding (the order-agnostic
-        # training/inference regime). They are replaced with relative-position
-        # attention biases that are evaluated in RNA-position space (independent
-        # of decoding step). See `RelativePositionBias` above.
+        # The previous LSTM positional encoder + CausalConv1d stack was
+        # step-order-dependent. Relative-position attention biases encode RNA
+        # positions directly, which is compatible with random-permutation
+        # decoding during order-agnostic training and inference.
         self.fc_out = nn.Linear(embed_size, vocab_size - 1)
         self.paired_embedding = nn.Embedding(2, embed_size)
 

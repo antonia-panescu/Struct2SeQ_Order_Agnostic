@@ -127,9 +127,6 @@ class DotBracketDataset(Dataset):
 
 
 def collate_dbn(data):
-    # return None
-    # print(data)
-    # exit()
     src = [d["src"] for d in data]
     ct_matrix = [d["ct_matrix"] for d in data]
     paired_correspondence = [d["paired_correspondence"] for d in data]

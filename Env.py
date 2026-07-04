@@ -1,22 +1,25 @@
 import os
-import random
+from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 import yaml
-from arnie.utils import convert_dotbracket_to_bp_list
-from Network_test10 import RibonanzaNet, finetuned_RibonanzaNet
 
-# create dummy arnie config
-with open("arnie_file.txt", "w+") as f:
-    f.write("linearpartition: . \nTMP: /tmp")
+PROJECT_ROOT = Path(__file__).resolve().parent
+DEFAULT_ARNIEFILE = PROJECT_ROOT / "arnie_file.txt"
+WEIGHTS_DIR = Path(
+    os.environ.get("RIBONANZA_WEIGHTS_DIR", PROJECT_ROOT.parent / "weights")
+)
 
-os.environ["ARNIEFILE"] = "arnie_file.txt"
+if "ARNIEFILE" not in os.environ:
+    if not DEFAULT_ARNIEFILE.exists():
+        DEFAULT_ARNIEFILE.write_text("linearpartition: .\nTMP: /tmp\n")
+    os.environ["ARNIEFILE"] = str(DEFAULT_ARNIEFILE)
 
 from arnie.pk_predictors import _hungarian
+from arnie.utils import convert_dotbracket_to_bp_list
+from Network_test10 import RibonanzaNet
 
 
 def mask_diagonal(matrix, mask_value=0):
@@ -53,8 +56,6 @@ class finetuned_RibonanzaNet(RibonanzaNet):
         self.ct_predictor = nn.Linear(64, 1)
 
     def forward(self, src):
-
-        # with torch.no_grad():
         _, pairwise_features = self.get_embeddings(
             src, torch.ones_like(src).long().to(src.device)
         )
@@ -72,17 +73,17 @@ class DQN_env:
     def __init__(self, use_gpu=True, compile=False):
 
         model = finetuned_RibonanzaNet(
-            load_config_from_yaml("test10_configs/pairwise.yaml")
-        )  # .cuda()
+            load_config_from_yaml(PROJECT_ROOT / "test10_configs/pairwise.yaml")
+        )
         model.load_state_dict(
-            torch.load("../weights/RibonanzaNet-SS.pt", map_location="cpu")
+            torch.load(WEIGHTS_DIR / "RibonanzaNet-SS.pt", map_location="cpu")
         )
 
         reactivity_model = RibonanzaNet(
-            load_config_from_yaml("test10_configs/pairwise.yaml")
+            load_config_from_yaml(PROJECT_ROOT / "test10_configs/pairwise.yaml")
         )
         reactivity_model.load_state_dict(
-            torch.load("../weights/RibonanzaNet.pt", map_location="cpu")
+            torch.load(WEIGHTS_DIR / "RibonanzaNet.pt", map_location="cpu")
         )
 
         self.SS_model = model
@@ -130,24 +131,17 @@ class DQN_env:
         return paired_correspondences
 
     def get_reward(self, bps, target_structure):
-        # bp_strings=[f"{i}-{j}" for i,j in target_bp]
-
         target_bp = convert_dotbracket_to_bp_list(
             target_structure, allow_pseudoknots=True
         )
 
         target_correspondence = self.get_paired_correspondences(target_bp)
 
-        # structure,bp=self.get_structure(sequence)
-        # bps
         design_correspondence = self.get_paired_correspondences(bps)
 
         positional_rewards = []
         sum_rewards = 0
         for i in range(len(target_structure)):
-
-            # pos_reward
-
             if i in target_correspondence and i in design_correspondence:
                 if target_correspondence[i] == design_correspondence[i]:
                     pos_reward = 1
@@ -165,27 +159,3 @@ class DQN_env:
         positional_rewards = np.array(positional_rewards)
 
         return positional_rewards
-
-
-# some tests
-
-if __name__ == "__main__":
-    print("running some tests")
-    test_sequence = (
-        "GGGGGCCACAGCAGAAGCGUUCACGUCGCAGCCCCUGUCAGCCAUUGCACUCCGGCUGCGAAUUCUGCU"
-    )
-    test_structure = (
-        "((((((...[[[[[[[(((.......))).))))))..(((((..........)))))....]]]]]]]"
-    )
-
-    model = finetuned_RibonanzaNet(
-        load_config_from_yaml("configs/pairwise.yaml")
-    )  # .cuda()
-    model.load_state_dict(torch.load("weights/RibonanzaNet-SS.pt", map_location="cpu"))
-
-    env = DQN_env(model)
-
-    # print(env.get_structure(test_sequence))
-    assert env.get_structure(test_sequence)[0] == test_structure
-
-    print(env.get_reward(test_sequence, test_structure))

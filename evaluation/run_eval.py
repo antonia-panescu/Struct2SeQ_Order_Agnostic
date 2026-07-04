@@ -1,10 +1,9 @@
 """
 Single-GPU evaluation of a struct2seq_bidir_rl checkpoint on a target test CSV.
 
-Reproduces the original Struct2SeQ eval protocol from
-``/home/nvidia/haiwen/antonia/Struct2SeQ/generate.py`` — three sampling
-strategies, N samples per strategy per target — but **with random per-sample
-decoding orders** to match this model's order-agnostic training:
+Runs the Struct2SeQ evaluation protocol with three sampling strategies and
+N samples per strategy per target. By default, this evaluator uses random
+per-sample decoding orders to match order-agnostic training:
 
   strategy A (epsilon-greedy, p=0.05) : argmax with 5% near-uniform-among-allowed picks
   strategy B (epsilon-greedy, p=0.10) : argmax with 10% near-uniform-among-allowed picks
@@ -19,8 +18,8 @@ Reward identical to training's test-play:
     env.SS_model(seq).sigmoid() -> _hungarian(theta=0.5, min_helix=1)
     -> DQN_env.get_reward (positional MCC-style match vs target).
 
-Run from struct2seq_bidir_rl/ (env loads RibonanzaNet weights via
-'../weights/...').
+Run from the repository root. The environment loads RibonanzaNet weights from
+``RIBONANZA_WEIGHTS_DIR`` when set, otherwise from ``../weights``.
 
 Outputs land in evaluation/<UTC-timestamp>__<experiment>__<label>__<data>/:
   summary.json     - run metadata, checkpoint hash, per-strategy + best-of metrics
@@ -33,7 +32,7 @@ Example:
   CUDA_VISIBLE_DEVICES=6 python evaluation/run_eval.py \
       --checkpoint best_policy_network.pt \
       --config     config_brev_8gpu.yaml \
-      --test-csv   /home/nvidia/haiwen/antonia/knitnet/data/bpRNA-1m_512cap_dedup_oracle_det/test.csv \
+      --test-csv   /path/to/test.csv \
       --experiment struct2seq_bidir_rl_orderagnostic \
       --label      ep4_best
 """

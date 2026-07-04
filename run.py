@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
-import wandb
 import yaml
 from accelerate import Accelerator
 from accelerate.utils import set_seed
@@ -26,12 +25,17 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
 
 # --- Optional Vienna-reward path for per-target test-time fine-tuning ---------
 # When FT_REWARD=vienna, the play loop scores designs by folding each generated
 # sequence with ViennaRNA MFE instead of RibonanzaNet-SS. env.get_reward is
 # oracle-independent (needs only a base-pair list), so ONLY the fold step
-# changes. FT_REWARD unset/"rnet" => original RNet path, unchanged. (configs 2/4.)
+# changes. FT_REWARD unset/"rnet" uses the RibonanzaNet path.
 _FT_VIENNA = os.environ.get("FT_REWARD", "rnet").lower() == "vienna"
 
 
@@ -78,8 +82,8 @@ class TrainingConfig:
     train_batch_size: int = 8
     max_train_batch_size: int = 64
     inference_batch_size: int = 120
-    # K random permutations of the same target per fwd/bwd pass during training
-    # (Shujun's recommendation). Each sample is replicated K times in the batch,
+    # K random permutations of the same target per fwd/bwd pass during training.
+    # Each sample is replicated K times in the batch,
     # each replica decoded with an independent random RNA-position permutation.
     # K=1 disables (single perm per sample, original behavior).
     k_perm: int = 1
@@ -114,8 +118,6 @@ def save_default_config():
     config = TrainingConfig()
     config.to_yaml("default_config.yaml")
 
-
-# Original functions from your code
 def load_structures(file_path):
     structures = []
     with open(file_path, "r") as f:
@@ -155,8 +157,6 @@ def setup_models(config):
 
     delete_modules(policy_network)
     delete_modules(target_network)
-
-    # polycy_network.load_state_dict(torch.load("../test2_2M/policy_network.pt"))
 
     target_network.load_state_dict(policy_network.state_dict())
 
@@ -240,7 +240,7 @@ def train_epoch(
         B, L = sequence.shape
 
         if order_agnostic:
-            # K-permutation tiling (Shujun's recommendation): replicate each
+            # K-permutation tiling: replicate each
             # sample K times along the batch dim, with an independent random
             # permutation per replica. Forces the decoder to learn
             # permutation-invariant features per data sample.
@@ -593,7 +593,14 @@ def parse_args():
         default=None,
         help="WandB run name (default: auto-generated)",
     )
-    parser.add_argument("--no-wandb", action="store_true", help="Disable WandB logging")
+    parser.add_argument("--wandb", action="store_true", help="Enable W&B logging")
+    parser.add_argument("--no-wandb", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--wandb-entity",
+        type=str,
+        default=os.environ.get("WANDB_ENTITY"),
+        help="W&B entity/team name (or set WANDB_ENTITY)",
+    )
     parser.add_argument(
         "--skip-play",
         action="store_true",
@@ -685,7 +692,9 @@ def main():
             )
             episode_csv_file.flush()
 
-    use_wandb = not args.no_wandb
+    use_wandb = args.wandb and not args.no_wandb
+    if use_wandb and wandb is None:
+        raise ImportError("wandb is not installed. Install wandb or omit --wandb.")
     if use_wandb and accelerator.is_main_process:
         run_name = args.wandb_run_name or (
             f"struct2seq_bidir_{'orderag' if args.order_agnostic else 'ltr'}_"
@@ -694,7 +703,7 @@ def main():
         )
         wandb.init(
             project=args.wandb_project,
-            entity="antonia-panescu-yale-university",
+            entity=args.wandb_entity,
             name=run_name,
             config={
                 **asdict(config),
@@ -703,16 +712,11 @@ def main():
             },
         )
         print(f"WandB run: {run_name}")
-
-    # print(accelerator.distributed_type)
-    # exit()
-
     # Load data and setup
     structures = pl.read_csv(args.target_structure_file)["structure"].to_list()
     # structed_ness=[1-s.count(".")/len(s) for s in structures]
     # structures = [s for s, z in zip(structures, structed_ness) if z > 0.5]
 
-    # structures = load_structures("../structures.txt")
     print(f"there are {len(structures)} structures in total")
     train_structures, test_structures = train_test_split(
         structures, test_size=config.test_size, random_state=42
@@ -842,7 +846,9 @@ def main():
                 train_structures, config.n_targets, replace=False
             )
 
-        inference_dataset = DotBracketDataset(list(target_structures) + list(hard_structures))
+        inference_dataset = DotBracketDataset(
+            list(target_structures) + list(hard_structures)
+        )
         inference_dataloader = DataLoader(
             inference_dataset,
             batch_size=config.inference_batch_size,
@@ -857,9 +863,20 @@ def main():
             glob(f"tmp/episode{episode}/process*/data.pt") or
             glob(f"tmp/episode{episode}/process*/batch*.pkl")
         )
-        if existing_episode_data:
-            print(f"Skipping play phase — using existing data in tmp/episode{episode}/")
-            train_rewards, train_rewards_vector, hard_structures = float("nan"), np.array([]), []
+        if args.skip_play and episode == args.start_episode:
+            print(f"Skipping play phase for episode {episode} (--skip-play)")
+            train_rewards, train_rewards_vector, hard_structures = (
+                float("nan"),
+                np.array([]),
+                [],
+            )
+        elif existing_episode_data:
+            print(f"Skipping play phase - using existing data in tmp/episode{episode}/")
+            train_rewards, train_rewards_vector, hard_structures = (
+                float("nan"),
+                np.array([]),
+                [],
+            )
         else:
             train_rewards, train_rewards_vector, hard_structures = play(
                 policy_network, env, inference_dataloader, accelerator, episode, p=p
