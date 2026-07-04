@@ -181,12 +181,11 @@ as `arnie` are not installed.
 If you use this repository, please cite:
 
 ```bibtex
-@inproceedings{order_agnostic_decoding_2026,
+@inproceedings{rna_inverse_order_agnostic_decoding_2026,
     title={Order-Agnostic Decoding for Sample-Efficient RNA Inverse Folding},
     author={Antonia Panescu and Shujun He and Yixuan He and Rex Ying},
     booktitle={ICML 2026 Workshop on Generative and Agentic AI for Biology},
     year={2026},
-    url={https://openreview.net/forum?id=3tWscvIMJG},
-    note={GenBio 2026 Poster}
+    url={https://openreview.net/forum?id=3tWscvIMJG}
 }
 ```
