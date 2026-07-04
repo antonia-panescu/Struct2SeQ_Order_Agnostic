@@ -10,8 +10,8 @@ einops
 matplotlib
 scikit-learn
 
-# Optional logging for `run.py --wandb`
-# wandb
+# Logging for `run.py --wandb` and the Slurm training scripts
+wandb
 
 # Optimizer
 pytorch-ranger

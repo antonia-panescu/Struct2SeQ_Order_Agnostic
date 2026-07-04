@@ -8,9 +8,7 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_ARNIEFILE = PROJECT_ROOT / "arnie_file.txt"
-WEIGHTS_DIR = Path(
-    os.environ.get("RIBONANZA_WEIGHTS_DIR", PROJECT_ROOT.parent / "weights")
-)
+WEIGHTS_DIR = PROJECT_ROOT / "weights"
 
 if "ARNIEFILE" not in os.environ:
     if not DEFAULT_ARNIEFILE.exists():
@@ -70,21 +68,41 @@ class finetuned_RibonanzaNet(RibonanzaNet):
 
 
 class DQN_env:
-    def __init__(self, use_gpu=True, compile=False):
+    def __init__(
+        self,
+        rnet_weights=None,
+        rnet_ss_weights=None,
+        use_gpu=True,
+        compile=False,
+    ):
+        def resolve_weight(path, filename):
+            if path is None:
+                return WEIGHTS_DIR / filename
+            path = Path(path)
+            return path if path.is_absolute() else PROJECT_ROOT / path
+
+        def load_weight_file(path, label):
+            try:
+                return torch.load(path, map_location="cpu")
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(
+                    f"{label} weights were not found at {path}. "
+                    "Download the RibonanzaNet weights and place them in "
+                    f"{WEIGHTS_DIR}."
+                ) from exc
+
+        rnet_weights = resolve_weight(rnet_weights, "RibonanzaNet.pt")
+        rnet_ss_weights = resolve_weight(rnet_ss_weights, "RibonanzaNet-SS.pt")
 
         model = finetuned_RibonanzaNet(
             load_config_from_yaml(PROJECT_ROOT / "test10_configs/pairwise.yaml")
         )
-        model.load_state_dict(
-            torch.load(WEIGHTS_DIR / "RibonanzaNet-SS.pt", map_location="cpu")
-        )
+        model.load_state_dict(load_weight_file(rnet_ss_weights, "RibonanzaNet-SS"))
 
         reactivity_model = RibonanzaNet(
             load_config_from_yaml(PROJECT_ROOT / "test10_configs/pairwise.yaml")
         )
-        reactivity_model.load_state_dict(
-            torch.load(WEIGHTS_DIR / "RibonanzaNet.pt", map_location="cpu")
-        )
+        reactivity_model.load_state_dict(load_weight_file(rnet_weights, "RibonanzaNet"))
 
         self.SS_model = model
 

@@ -61,6 +61,55 @@ def _vienna_bps_batch(predicted_sequences, env):
     return out
 
 
+def _read_numeric_csv_column(path, column):
+    if not os.path.exists(path):
+        return []
+    values = []
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            raw = row.get(column)
+            if raw in (None, ""):
+                continue
+            try:
+                value = float(raw)
+            except ValueError:
+                continue
+            if np.isfinite(value):
+                values.append(value)
+    return values
+
+
+def _runtime_resource_metadata(accelerator):
+    cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+    cuda_visible_count = (
+        len([dev for dev in cuda_visible.split(",") if dev.strip()])
+        if cuda_visible
+        else None
+    )
+    allocated_gpu_raw = (
+        os.environ.get("STRUCT2SEQ_ALLOCATED_GPUS")
+        or os.environ.get("SLURM_GPUS_ON_NODE")
+        or os.environ.get("SLURM_GPUS")
+    )
+    try:
+        allocated_gpus = int(str(allocated_gpu_raw).split(",")[0])
+    except (TypeError, ValueError):
+        allocated_gpus = accelerator.num_processes
+    return {
+        "accelerate_num_processes": accelerator.num_processes,
+        "allocated_gpus": allocated_gpus,
+        "torch_cuda_device_count": torch.cuda.device_count()
+        if torch.cuda.is_available()
+        else 0,
+        "cuda_visible_devices": cuda_visible,
+        "cuda_visible_devices_count": cuda_visible_count,
+        "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+        "slurm_job_name": os.environ.get("SLURM_JOB_NAME"),
+        "slurm_nodelist": os.environ.get("SLURM_NODELIST"),
+    }
+
+
 # Configuration Class
 @dataclass
 class TrainingConfig:
@@ -425,7 +474,8 @@ def train_epoch(
                         "train/episode": log_state["episode"],
                         "train/epoch_within_episode": log_state["epoch_idx"],
                         "global_step": log_state["global_step"],
-                    }
+                    },
+                    step=log_state["global_step"],
                 )
 
     optimizer_lr = optimizer.param_groups[0]["lr"]
@@ -434,24 +484,77 @@ def train_epoch(
     return total_loss / len(dataloader)
 
 
+def _save_play_data(data, out_path):
+    torch.save({
+        "structures": torch.stack([d[0] for d in data]),
+        "sequences": torch.stack([d[1] for d in data]),
+        "rewards": torch.stack([torch.from_numpy(np.array(d[2])) for d in data]),
+    }, out_path)
+
+
+def _load_play_data(out_path):
+    saved = torch.load(out_path, map_location="cpu")
+    return [
+        [
+            saved["structures"][i].cpu(),
+            saved["sequences"][i].cpu(),
+            saved["rewards"][i].cpu().numpy(),
+        ]
+        for i in range(saved["structures"].shape[0])
+    ]
+
+
+def _episode_play_complete(episode, num_processes):
+    complete_markers = glob(f"tmp/episode{episode}/process*/complete.txt")
+    data_files = glob(f"tmp/episode{episode}/process*/data.pt")
+    return len(complete_markers) >= num_processes and len(data_files) >= num_processes
+
+
+def _completed_episode_data_files(max_episode, num_processes):
+    files = []
+    for ep in range(max_episode + 1):
+        if _episode_play_complete(ep, num_processes):
+            files.extend(sorted(glob(f"tmp/episode{ep}/process*/data.pt")))
+    return files
+
+
 def play(model, env, dataloader, accelerator, episode, save_data=True, p=0.0,
-         save_interval=500):
+         save_interval=500, play_log_state=None):
     model.eval()
     data = []
     run_id = accelerator.process_index
     os.makedirs("tmp", exist_ok=True)
 
     if save_data:
-        os.makedirs(f"tmp/episode{episode}/process{run_id}", exist_ok=True)
-        out_path = f"tmp/episode{episode}/process{run_id}/data.pt"
-        episode_rewards = []
-        batches_done = 0
+        process_dir = f"tmp/episode{episode}/process{run_id}"
+        os.makedirs(process_dir, exist_ok=True)
+        out_path = f"{process_dir}/data.pt"
+        batches_done_file = f"{process_dir}/batches_done.txt"
+        complete_file = f"{process_dir}/complete.txt"
+        if os.path.exists(out_path) and os.path.exists(batches_done_file):
+            data = _load_play_data(out_path)
+            episode_rewards = [d[2] for d in data]
+            with open(batches_done_file) as f:
+                batches_done = int(f.read().strip())
+            print(
+                f"Resuming train play from batch {batches_done} "
+                f"({len(data)} samples already saved)"
+            )
+        else:
+            if os.path.exists(out_path):
+                print(
+                    f"Ignoring incomplete train play checkpoint without "
+                    f"{batches_done_file}: {out_path}"
+                )
+            episode_rewards = []
+            batches_done = 0
     else:
         # Test play: checkpoint rewards so crashes can resume
         test_dir = f"tmp/test_episode{episode}/process{run_id}"
         os.makedirs(test_dir, exist_ok=True)
         rewards_ckpt = f"{test_dir}/rewards.npy"
         batches_done_file = f"{test_dir}/batches_done.txt"
+        complete_file = f"{test_dir}/complete.txt"
         if os.path.exists(rewards_ckpt) and os.path.exists(batches_done_file):
             episode_rewards = list(np.load(rewards_ckpt, allow_pickle=True))
             with open(batches_done_file) as f:
@@ -499,6 +602,7 @@ def play(model, env, dataloader, accelerator, episode, save_data=True, p=0.0,
         target_structures = [detokenize_dot_bracket(s.cpu().numpy()) for s in src]
         rewards = [env.get_reward(bp, s) for bp, s in zip(bps, target_structures)]
         episode_rewards.extend(rewards)
+        batches_done = batch_num + 1
 
         if save_data:
             for t, s, r in zip(batch["src"], predicted_sequences, rewards):
@@ -506,16 +610,35 @@ def play(model, env, dataloader, accelerator, episode, save_data=True, p=0.0,
 
             # Incremental save every save_interval batches so crashes don't lose all data
             if (batch_num + 1) % save_interval == 0 and data:
-                torch.save({
-                    "structures": torch.stack([d[0] for d in data]),
-                    "sequences":  torch.stack([d[1] for d in data]),
-                    "rewards":    torch.stack([torch.from_numpy(np.array(d[2])) for d in data]),
-                }, out_path)
+                _save_play_data(data, out_path)
+                with open(batches_done_file, "w") as f:
+                    f.write(str(batches_done))
         else:
             # Save test play checkpoint after every batch (rewards are tiny)
             np.save(rewards_ckpt, np.array(episode_rewards))
             with open(batches_done_file, "w") as f:
                 f.write(str(batch_num + 1))
+
+        if play_log_state is not None and accelerator.is_main_process:
+            log_interval = max(1, int(play_log_state.get("interval", 50)))
+            if batches_done == 1 or batches_done % log_interval == 0:
+                phase = play_log_state["phase"]
+                total_batches = max(1, int(play_log_state["total_batches"]))
+                rewards_array = np.asarray(episode_rewards, dtype=float)
+                reward_mean = (
+                    float(np.mean(rewards_array))
+                    if rewards_array.size
+                    else float("nan")
+                )
+                wandb.log(
+                    {
+                        f"play/{phase}_batches_done": batches_done,
+                        f"play/{phase}_progress": batches_done / total_batches,
+                        f"play/{phase}_rank0_reward_mean": reward_mean,
+                        "play_step": play_log_state["step_offset"] + batches_done,
+                        "play/episode": episode + 1,
+                    }
+                )
 
     # Gather only rewards (scalars) — never gather structure tensors across GPUs;
     # that all-gather times out at NCCL's 600s limit when the play set is large.
@@ -526,11 +649,11 @@ def play(model, env, dataloader, accelerator, episode, save_data=True, p=0.0,
     gathered_rewards = gathered_rewards[gathered_mask.astype("bool")]
 
     if save_data and data:
-        torch.save({
-            "structures": torch.stack([d[0] for d in data]),
-            "sequences":  torch.stack([d[1] for d in data]),
-            "rewards":    torch.stack([torch.from_numpy(np.array(d[2])) for d in data]),
-        }, out_path)
+        _save_play_data(data, out_path)
+        with open(batches_done_file, "w") as f:
+            f.write(str(batches_done))
+        with open(complete_file, "w") as f:
+            f.write(time.strftime("%Y-%m-%dT%H:%M:%S"))
 
     # Compute hard structures (10% worst-reward on this rank) without cross-GPU gather
     if save_data and data:
@@ -543,11 +666,12 @@ def play(model, env, dataloader, accelerator, episode, save_data=True, p=0.0,
     else:
         local_hard_structures = []
 
-    # Clean up test play checkpoint files on successful completion
+    # Keep test play checkpoints after successful completion. They are tiny and
+    # allow a resume to skip recomputation if the job exits after test play but
+    # before episode stats/reward logs are written.
     if not save_data:
-        for f in [rewards_ckpt, batches_done_file]:
-            if os.path.exists(f):
-                os.remove(f)
+        with open(complete_file, "w") as f:
+            f.write(time.strftime("%Y-%m-%dT%H:%M:%S"))
 
     if accelerator.is_main_process:
         print(f"AVG reward for this episode: {np.mean(gathered_rewards)}")
@@ -593,6 +717,18 @@ def parse_args():
         default=None,
         help="WandB run name (default: auto-generated)",
     )
+    parser.add_argument(
+        "--wandb-run-id",
+        type=str,
+        default=os.environ.get("WANDB_RUN_ID"),
+        help="Stable W&B run id for resume/continuation (or set WANDB_RUN_ID)",
+    )
+    parser.add_argument(
+        "--wandb-resume",
+        type=str,
+        default=os.environ.get("WANDB_RESUME", "allow"),
+        help="W&B resume mode for --wandb-run-id, e.g. allow, must, never",
+    )
     parser.add_argument("--wandb", action="store_true", help="Enable W&B logging")
     parser.add_argument("--no-wandb", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
@@ -616,6 +752,24 @@ def parse_args():
         "--skip-train",
         action="store_true",
         help="Skip training for --start-episode and go straight to test play. Use when checkpoint already exists.",
+    )
+    parser.add_argument(
+        "--play-save-interval",
+        type=int,
+        default=500,
+        help="Save generated training play data every N batches.",
+    )
+    parser.add_argument(
+        "--play-log-interval",
+        type=int,
+        default=50,
+        help="Log W&B play/generation progress every N batches.",
+    )
+    parser.add_argument(
+        "--mid-epoch-save-interval",
+        type=int,
+        default=5000,
+        help="Save mid-epoch training checkpoints every N optimizer steps.",
     )
     return parser.parse_args()
 
@@ -649,13 +803,13 @@ def main():
     os.makedirs("logs", exist_ok=True)
 
     # CSV metric logging (main process only)
+    step_csv_path = os.path.join("logs", "metrics_step.csv")
+    episode_csv_path = os.path.join("logs", "metrics_episode.csv")
     step_csv_file = None
     step_csv_writer = None
     episode_csv_file = None
     episode_csv_writer = None
     if accelerator.is_main_process:
-        step_csv_path = os.path.join("logs", "metrics_step.csv")
-        episode_csv_path = os.path.join("logs", "metrics_episode.csv")
         step_is_new = not os.path.exists(step_csv_path)
         episode_is_new = not os.path.exists(episode_csv_path)
         step_csv_file = open(step_csv_path, "a", newline="")
@@ -695,23 +849,38 @@ def main():
     use_wandb = args.wandb and not args.no_wandb
     if use_wandb and wandb is None:
         raise ImportError("wandb is not installed. Install wandb or omit --wandb.")
+    resource_metadata = _runtime_resource_metadata(accelerator)
     if use_wandb and accelerator.is_main_process:
         run_name = args.wandb_run_name or (
             f"struct2seq_bidir_{'orderag' if args.order_agnostic else 'ltr'}_"
             f"{'pretrained' if args.checkpoint else 'scratch'}_"
             f"{time.strftime('%Y%m%d_%H%M%S')}"
         )
+        run_id = args.wandb_run_id or run_name
         wandb.init(
             project=args.wandb_project,
             entity=args.wandb_entity,
             name=run_name,
+            id=run_id,
+            resume=args.wandb_resume,
             config={
                 **asdict(config),
                 "order_agnostic": args.order_agnostic,
                 "checkpoint": args.checkpoint,
+                "play_save_interval": args.play_save_interval,
+                "mid_epoch_save_interval": args.mid_epoch_save_interval,
+                "wandb_run_id": run_id,
+                "wandb_resume": args.wandb_resume,
+                **resource_metadata,
             },
         )
-        print(f"WandB run: {run_name}")
+        wandb.define_metric("global_step")
+        wandb.define_metric("play_step")
+        wandb.define_metric("train/*", step_metric="global_step")
+        wandb.define_metric("reward/*", step_metric="global_step")
+        wandb.define_metric("system/*", step_metric="global_step")
+        wandb.define_metric("play/*", step_metric="play_step")
+        print(f"WandB run: {run_name} (id={run_id}, resume={args.wandb_resume})")
     # Load data and setup
     structures = pl.read_csv(args.target_structure_file)["structure"].to_list()
     # structed_ness=[1-s.count(".")/len(s) for s in structures]
@@ -828,14 +997,42 @@ def main():
     p = config.initial_p
     p_delta = -(config.initial_p - config.final_p) / config.n_episodes
     train_batch_size = config.train_batch_size
-    best_test_reward = float("-inf")
+    existing_best_test_rewards = _read_numeric_csv_column(
+        episode_csv_path, "best_test_reward"
+    )
+    best_test_reward = (
+        max(existing_best_test_rewards)
+        if existing_best_test_rewards
+        else float("-inf")
+    )
     hard_structures = []
     # Fast-forward p and train_batch_size if resuming mid-run
     for _ in range(args.start_episode):
         p += p_delta
         train_batch_size = min(train_batch_size * 2, config.max_train_batch_size)
     # Mutable container for global step count; passed into train_epoch via log_state.
-    global_step_counter = [0]
+    existing_global_steps = _read_numeric_csv_column(step_csv_path, "global_step")
+    global_step_counter = [
+        int(max(existing_global_steps)) if existing_global_steps else 0
+    ]
+    if accelerator.is_main_process and global_step_counter[0] > 0:
+        print(f"Resuming W&B/global metric step from {global_step_counter[0]}")
+    if accelerator.is_main_process and existing_best_test_rewards:
+        print(f"Resuming best test reward from {best_test_reward:.6f}")
+    if use_wandb and accelerator.is_main_process:
+        wandb.log(
+            {
+                "system/allocated_gpus": resource_metadata["allocated_gpus"],
+                "system/accelerate_num_processes": resource_metadata[
+                    "accelerate_num_processes"
+                ],
+                "system/torch_cuda_device_count": resource_metadata[
+                    "torch_cuda_device_count"
+                ],
+                "global_step": global_step_counter[0],
+            },
+            step=global_step_counter[0],
+        )
     for episode in range(args.start_episode, config.n_episodes):
         episode_start_time = time.time()
         print(f"Episode {episode + 1}/{config.n_episodes}")
@@ -858,10 +1055,9 @@ def main():
         )
         inference_dataloader = accelerator.prepare(inference_dataloader)
 
-        # Auto-skip play if data already exists for this episode (crash recovery)
-        existing_episode_data = (
-            glob(f"tmp/episode{episode}/process*/data.pt") or
-            glob(f"tmp/episode{episode}/process*/batch*.pkl")
+        # Auto-skip play only when every rank has marked its data complete.
+        existing_episode_data = _episode_play_complete(
+            episode, accelerator.num_processes
         )
         if args.skip_play and episode == args.start_episode:
             print(f"Skipping play phase for episode {episode} (--skip-play)")
@@ -879,7 +1075,27 @@ def main():
             )
         else:
             train_rewards, train_rewards_vector, hard_structures = play(
-                policy_network, env, inference_dataloader, accelerator, episode, p=p
+                policy_network,
+                env,
+                inference_dataloader,
+                accelerator,
+                episode,
+                p=p,
+                save_interval=args.play_save_interval,
+                play_log_state=(
+                    {
+                        "phase": "train",
+                        "interval": args.play_log_interval,
+                        "total_batches": len(inference_dataloader),
+                        "step_offset": episode
+                        * (
+                            len(inference_dataloader)
+                            + len(test_inference_dataloader)
+                        ),
+                    }
+                    if use_wandb
+                    else None
+                ),
             )
             if accelerator.is_main_process:
                 df = pd.DataFrame({"episode_reward": np.mean(train_rewards_vector, axis=1) if train_rewards_vector.ndim == 2 else train_rewards_vector})
@@ -894,9 +1110,11 @@ def main():
             loss = float("nan")
             epoch_losses = []
         else:
+            completed_train_data = _completed_episode_data_files(
+                episode, accelerator.num_processes
+            )
             train_dataset = RNADataset(
-                glob("tmp/episode*/process*/data.pt") or
-                glob("tmp/episode*/process*/batch*.pkl")
+                completed_train_data or glob("tmp/episode*/process*/batch*.pkl")
             )
             print(f"using batch size {train_batch_size} for training")
             train_dataloader = DataLoader(
@@ -991,6 +1209,7 @@ def main():
                         log_state=log_state,
                         mid_epoch_ckpt_path=mid_ckpt_path,
                         resume_step=resume_step,
+                        mid_epoch_save_interval=args.mid_epoch_save_interval,
                     )
                 else:
                     loss = train_epoch(
@@ -1006,6 +1225,7 @@ def main():
                         log_state=log_state,
                         mid_epoch_ckpt_path=mid_ckpt_path,
                         resume_step=resume_step,
+                        mid_epoch_save_interval=args.mid_epoch_save_interval,
                     )
                 if log_state is not None:
                     global_step_counter[0] = log_state["global_step"]
@@ -1020,7 +1240,14 @@ def main():
 
         print(f"Training loss: {loss:.4f}")
         if use_wandb and accelerator.is_main_process:
-            wandb.log({"train/loss": loss, "episode": episode + 1})
+            wandb.log(
+                {
+                    "train/loss": loss,
+                    "train/episode": episode + 1,
+                    "global_step": global_step_counter[0],
+                },
+                step=global_step_counter[0],
+            )
         # Unwrap both nets before syncing — torch.compile + DDP can give them
         # mismatched key prefixes (`_orig_mod.module.*` vs `_orig_mod.*`),
         # which makes a direct load_state_dict between the wrapped versions
@@ -1053,6 +1280,21 @@ def main():
             accelerator,
             episode,
             save_data=False,
+            play_log_state=(
+                {
+                    "phase": "test",
+                    "interval": args.play_log_interval,
+                    "total_batches": len(test_inference_dataloader),
+                    "step_offset": episode
+                    * (
+                        len(inference_dataloader)
+                        + len(test_inference_dataloader)
+                    )
+                    + len(inference_dataloader),
+                }
+                if use_wandb
+                else None
+            ),
         )
 
         if accelerator.is_main_process:
@@ -1104,9 +1346,11 @@ def main():
                         "train/loss_mean_per_episode": train_loss_mean,
                         "train/lr_final": lr_final,
                         "train/episode_duration_s": episode_duration,
+                        "train/episode": episode + 1,
                         "episode": episode + 1,
                         "global_step": global_step_counter[0],
-                    }
+                    },
+                    step=global_step_counter[0],
                 )
 
         # Save best checkpoint (regular per-episode checkpoint already saved before test play)

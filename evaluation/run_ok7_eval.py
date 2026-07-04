@@ -51,6 +51,7 @@ from tqdm import tqdm
 # Allow imports from project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+DEFAULT_POLICY_CHECKPOINT = PROJECT_ROOT / "weights" / "order_agnostic_policy.pt"
 
 OKS_SRC = os.environ.get("OPENKNOTSCORE_SRC")
 if OKS_SRC:
@@ -93,15 +94,19 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument(
         "--model", choices=["bidir"], default="bidir",
-        help=("Only 'bidir' (= best_policy_network.pt with new RPE arch) is "
+        help=("Only 'bidir' (= weights/order_agnostic_policy.pt with new RPE arch) is "
               "supported here. The original Struct2SeQ.pt must be evaluated "
               "from the Struct2SeQ_training/ codebase since loading its "
               "LSTM-PE weights into the new arch would zero out positional "
               "info and not be a faithful baseline. Compare against published "
               "per-puzzle baseline numbers directly."),
     )
-    p.add_argument("--checkpoint", type=str, default=None,
-                   help="Override default checkpoint path (default: best_policy_network.pt).")
+    p.add_argument(
+        "--checkpoint",
+        type=str,
+        default=str(DEFAULT_POLICY_CHECKPOINT),
+        help="Policy checkpoint path (default: weights/order_agnostic_policy.pt).",
+    )
     p.add_argument(
         "--inference-mode",
         choices=["l2r_legacy", "identity", "random", "paired_first", "inpaint"],
@@ -501,10 +506,9 @@ def main():
 
     # Build model + env
     config = TrainingConfig.from_yaml(args.config)
-    if args.checkpoint is not None:
-        ckpt_path = args.checkpoint
-    else:
-        ckpt_path = str(PROJECT_ROOT / "best_policy_network.pt")
+    ckpt_path = Path(args.checkpoint)
+    if not ckpt_path.is_absolute():
+        ckpt_path = PROJECT_ROOT / ckpt_path
 
     model = build_model(config, device)
     if accelerator.is_main_process:

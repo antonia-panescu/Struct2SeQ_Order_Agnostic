@@ -331,6 +331,25 @@ def jaccard_similarity_base_pairs(bp_set1, bp_set2):
     return jaccard
 
 
+def make_ref_upweighted_params(
+    ref_seq, upweight=1.0, base_weight=1.0, base_bias=0.0, up_bias=1.0
+):
+    """Return per-position logit weights and biases for a reference sequence."""
+    mapping = {"A": 0, "C": 1, "G": 2, "U": 3, "T": 3}
+    ref_seq = ref_seq.upper()
+    weight = torch.full((len(ref_seq), 4), base_weight)
+    bias = torch.full((len(ref_seq), 4), base_bias)
+
+    for i, nt in enumerate(ref_seq):
+        if nt not in mapping:
+            raise ValueError(f"Unsupported nucleotide in reference sequence: {nt}")
+        idx = mapping[nt]
+        weight[i, idx] = upweight
+        bias[i, idx] = up_bias
+
+    return weight, bias
+
+
 # Example usage
 # bp_set1 = [[16, 43], [17, 44], [18, 41], [19, 42], [20, 39], [21, 40], [22, 37], [23, 38], [24, 35], [25, 36]]
 # bp_set2 = [[16, 43], [17, 44], [18, 41], [19, 42], [20, 39], [21, 40], [22, 37], [23, 38], [26, 35], [27, 34]]
@@ -357,6 +376,8 @@ def generate_permuted(
     p: float = 0.0,                        # epsilon for "epsilon_argmax"; ignored for "sample"
     start_token: int = 4,
     fixed=None,                            # optional [B, L] long, -1 free, 0..3 constrained
+    weight=None,                           # optional [L, 4] or [B, L, 4] logit multiplier
+    bias=None,                             # optional [L, 4] or [B, L, 4] additive logit bias
 ):
     """Permutation-aware autoregressive decode with KV-cache.
 
@@ -381,6 +402,23 @@ def generate_permuted(
     B, L = src.shape
     device = src.device
     model.eval()
+    if weight is not None:
+        weight = torch.as_tensor(weight, device=device)
+    if bias is not None:
+        bias = torch.as_tensor(bias, device=device)
+
+    def params_at_position(params, positions, values):
+        if params is None:
+            return None
+        if params.dim() == 2:
+            selected = params.index_select(0, positions)
+        elif params.dim() == 3:
+            if params.shape[0] == 1 and B != 1:
+                params = params.expand(B, -1, -1)
+            selected = params[torch.arange(B, device=device), positions]
+        else:
+            raise ValueError("weight/bias must have shape [L, 4] or [B, L, 4]")
+        return selected.to(dtype=values.dtype)
 
     memory = model.encoder(src, ct_matrix)
     if memory.shape[0] == 1 and B != 1:
@@ -422,6 +460,12 @@ def generate_permuted(
         if isinstance(out, tuple):
             out, past_key_values = out
         values = out[:, -1, :]                          # [B, 4]
+        step_weight = params_at_position(weight, cur_rna_pos, values)
+        step_bias = params_at_position(bias, cur_rna_pos, values)
+        if step_weight is not None:
+            values = values * step_weight
+        if step_bias is not None:
+            values = values + step_bias
 
         # ---- per-row mask in RNA-position space ----------------------------
         mask = torch.zeros(B, 4, dtype=torch.bool, device=device)
@@ -523,11 +567,23 @@ def generate_permuted(
 
 
 def generate_sequence_batched(
-    model, src, target_correspondence, ct_matrix, start_token=4, p=0.1, max_len=None
+    model,
+    src,
+    target_correspondence,
+    ct_matrix,
+    start_token=4,
+    p=0.1,
+    max_len=None,
+    weight=None,
+    bias=None,
 ):
     _, seq_len = src.shape
     batch_size = len(target_correspondence)
     model.eval()
+    if weight is not None:
+        weight = torch.as_tensor(weight, device=src.device)
+    if bias is not None:
+        bias = torch.as_tensor(bias, device=src.device)
 
     with torch.no_grad():
         memory = model.encoder(src, ct_matrix)
@@ -566,6 +622,10 @@ def generate_sequence_batched(
                 use_cache=True,
             )
             values = out[:, -1, :]
+            if weight is not None:
+                values = values * weight[position][None].to(dtype=values.dtype)
+            if bias is not None:
+                values = values + bias[position][None].to(dtype=values.dtype)
 
             # Apply base pair constraints
             mask = create_base_pair_mask_batched(
@@ -592,11 +652,23 @@ def generate_sequence_batched(
 
 
 def generate_sequence_batched_sample(
-    model, src, target_correspondence, ct_matrix, start_token=4, p=1.0, max_len=None
+    model,
+    src,
+    target_correspondence,
+    ct_matrix,
+    start_token=4,
+    p=1.0,
+    max_len=None,
+    weight=None,
+    bias=None,
 ):
     _, seq_len = src.shape
     batch_size = len(target_correspondence)
     model.eval()
+    if weight is not None:
+        weight = torch.as_tensor(weight, device=src.device)
+    if bias is not None:
+        bias = torch.as_tensor(bias, device=src.device)
 
     with torch.no_grad():
         memory = model.encoder(src, ct_matrix)
@@ -635,6 +707,10 @@ def generate_sequence_batched_sample(
                 use_cache=True,
             )
             values = out[:, -1, :]
+            if weight is not None:
+                values = values * weight[position][None].to(dtype=values.dtype)
+            if bias is not None:
+                values = values + bias[position][None].to(dtype=values.dtype)
 
             # Apply base pair constraints
             mask = create_base_pair_mask_batched(

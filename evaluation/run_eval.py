@@ -19,7 +19,7 @@ Reward identical to training's test-play:
     -> DQN_env.get_reward (positional MCC-style match vs target).
 
 Run from the repository root. The environment loads RibonanzaNet weights from
-``RIBONANZA_WEIGHTS_DIR`` when set, otherwise from ``../weights``.
+``weights/``.
 
 Outputs land in evaluation/<UTC-timestamp>__<experiment>__<label>__<data>/:
   summary.json     - run metadata, checkpoint hash, per-strategy + best-of metrics
@@ -30,7 +30,7 @@ Outputs land in evaluation/<UTC-timestamp>__<experiment>__<label>__<data>/:
 
 Example:
   CUDA_VISIBLE_DEVICES=6 python evaluation/run_eval.py \
-      --checkpoint best_policy_network.pt \
+      --checkpoint weights/order_agnostic_policy.pt \
       --config     config_brev_8gpu.yaml \
       --test-csv   /path/to/test.csv \
       --experiment struct2seq_bidir_rl_orderagnostic \
