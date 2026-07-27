@@ -9,6 +9,8 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_ARNIEFILE = PROJECT_ROOT / "arnie_file.txt"
 WEIGHTS_DIR = PROJECT_ROOT / "weights"
+SHAPE_PAIRED_MAX = 0.25
+SHAPE_UNPAIRED_MIN = 0.125
 
 if "ARNIEFILE" not in os.environ:
     if not DEFAULT_ARNIEFILE.exists():
@@ -148,7 +150,7 @@ class DQN_env:
             paired_correspondences[j] = i
         return paired_correspondences
 
-    def get_reward(self, bps, target_structure):
+    def get_reward(self, bps, target_structure, shape=None):
         target_bp = convert_dotbracket_to_bp_list(
             target_structure, allow_pseudoknots=True
         )
@@ -158,19 +160,22 @@ class DQN_env:
         design_correspondence = self.get_paired_correspondences(bps)
 
         positional_rewards = []
-        sum_rewards = 0
         for i in range(len(target_structure)):
+            structurally_correct = False
             if i in target_correspondence and i in design_correspondence:
                 if target_correspondence[i] == design_correspondence[i]:
-                    pos_reward = 1
-                    sum_rewards += 1
-                else:
-                    pos_reward = 0
+                    structurally_correct = True
             elif i not in target_correspondence and i not in design_correspondence:
-                pos_reward = 1
-                sum_rewards += 1
-            else:
+                structurally_correct = True
+
+            if not structurally_correct:
                 pos_reward = 0
+            elif shape is None:
+                pos_reward = 1
+            elif i in target_correspondence:
+                pos_reward = int(shape[i] < SHAPE_PAIRED_MAX)
+            else:
+                pos_reward = int(shape[i] > SHAPE_UNPAIRED_MIN)
 
             positional_rewards.append(pos_reward)
 

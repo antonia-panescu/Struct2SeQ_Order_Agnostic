@@ -518,8 +518,18 @@ def _completed_episode_data_files(max_episode, num_processes):
     return files
 
 
-def play(model, env, dataloader, accelerator, episode, save_data=True, p=0.0,
-         save_interval=500, play_log_state=None):
+def play(
+    model,
+    env,
+    dataloader,
+    accelerator,
+    episode,
+    save_data=True,
+    p=0.0,
+    save_interval=500,
+    play_log_state=None,
+    shape_reward=False,
+):
     model.eval()
     data = []
     run_id = accelerator.process_index
@@ -590,6 +600,9 @@ def play(model, env, dataloader, accelerator, episode, save_data=True, p=0.0,
                 )
                 if not _FT_VIENNA:
                     bpps = env.SS_model(predicted_sequences).sigmoid().detach().cpu().numpy()
+                shape_profiles = (
+                    env.get_SHAPE(predicted_sequences) if shape_reward else None
+                )
 
         if _FT_VIENNA:
             bps = _vienna_bps_batch(predicted_sequences, env)
@@ -600,7 +613,15 @@ def play(model, env, dataloader, accelerator, episode, save_data=True, p=0.0,
                 bps.append(bp)
 
         target_structures = [detokenize_dot_bracket(s.cpu().numpy()) for s in src]
-        rewards = [env.get_reward(bp, s) for bp, s in zip(bps, target_structures)]
+        if shape_reward:
+            rewards = [
+                env.get_reward(bp, s, shape)
+                for bp, s, shape in zip(bps, target_structures, shape_profiles)
+            ]
+        else:
+            rewards = [
+                env.get_reward(bp, s) for bp, s in zip(bps, target_structures)
+            ]
         episode_rewards.extend(rewards)
         batches_done = batch_num + 1
 
@@ -698,6 +719,14 @@ def parse_args():
         "--order-agnostic",
         action="store_true",
         help="Train with random decoding order (bidirectional)",
+    )
+    parser.add_argument(
+        "--shape-reward",
+        action="store_true",
+        help=(
+            "Require both secondary-structure correctness and RibonanzaNet "
+            "SHAPE threshold compliance when computing positional rewards"
+        ),
     )
     parser.add_argument(
         "--checkpoint",
@@ -853,6 +882,7 @@ def main():
     if use_wandb and accelerator.is_main_process:
         run_name = args.wandb_run_name or (
             f"struct2seq_bidir_{'orderag' if args.order_agnostic else 'ltr'}_"
+            f"{'shape' if args.shape_reward else 'structure'}_"
             f"{'pretrained' if args.checkpoint else 'scratch'}_"
             f"{time.strftime('%Y%m%d_%H%M%S')}"
         )
@@ -866,6 +896,7 @@ def main():
             config={
                 **asdict(config),
                 "order_agnostic": args.order_agnostic,
+                "shape_reward": args.shape_reward,
                 "checkpoint": args.checkpoint,
                 "play_save_interval": args.play_save_interval,
                 "mid_epoch_save_interval": args.mid_epoch_save_interval,
@@ -990,7 +1021,17 @@ def main():
             print(f"[startup] torch.compile failed, continuing uncompiled: {e}")
 
     env = DQN_env()
-    env.SS_model = accelerator.prepare(env.SS_model)
+    if args.shape_reward:
+        env.SS_model, env.reactivity_model = accelerator.prepare(
+            env.SS_model, env.reactivity_model
+        )
+        if accelerator.is_main_process:
+            print(
+                "[startup] SHAPE reward enabled: positional rewards require "
+                "both structure correctness and SHAPE threshold compliance"
+            )
+    else:
+        env.SS_model = accelerator.prepare(env.SS_model)
     loss_fn = torch.nn.MSELoss()
 
     # Training loop
@@ -1082,6 +1123,7 @@ def main():
                 episode,
                 p=p,
                 save_interval=args.play_save_interval,
+                shape_reward=args.shape_reward,
                 play_log_state=(
                     {
                         "phase": "train",
@@ -1280,6 +1322,7 @@ def main():
             accelerator,
             episode,
             save_data=False,
+            shape_reward=args.shape_reward,
             play_log_state=(
                 {
                     "phase": "test",
