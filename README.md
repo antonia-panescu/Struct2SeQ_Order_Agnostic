@@ -5,6 +5,13 @@ Struct2SeQ-style sequence design so the decoder can fill RNA positions in a
 random order instead of only left to right. The model is trained with a
 Q-learning objective and scored with a RibonanzaNet-SS structure oracle.
 
+## Pretrained Checkpoint
+
+Download the pretrained order-agnostic model checkpoint from
+[Google Drive](https://drive.google.com/file/d/1oLSJvvpuOMcOfPob6jCh9RgunIgez9O5/view?usp=sharing)
+and save it as `weights/order_agnostic_policy.pt`. Follow the installation and
+generation instructions below to use the model.
+
 ## Features
 
 - Order-agnostic training with `run.py --order-agnostic`, which samples random
